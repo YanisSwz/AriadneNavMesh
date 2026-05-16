@@ -1,2 +1,4 @@
 # Force GitHub to recognize this as a C# project
 *.m linguist-language=Objective-C
+*.nb linguist-vendored
+*.wl linguist-vendored
