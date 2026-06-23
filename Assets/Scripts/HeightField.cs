@@ -99,8 +99,8 @@ public class HeightField : MonoBehaviour
         Gizmos.color = Color.green;
         for (int i = 0; i < cellCount; ++i)
         {
-            Vector3 height = new Vector3(cellSize * (cells[i].X + 0.5f), (cells[i].maxSpan + cells[i].minSpan) / 2f, cellSize * (cells[i].Z + 0.5f)) + minBounds;
-            if (height.y > 0f)
+            Vector3 height = new Vector3(cellSize * (cells[i].X + 0.5f) + minBounds.x, (cells[i].maxSpan + cells[i].minSpan) / 2f, cellSize * (cells[i].Z + 0.5f) + minBounds.z);
+            if (cells[i].maxSpan - cells[i].minSpan > 0f)
                 Gizmos.DrawCube(height, new Vector3(cellSize, cells[i].maxSpan - cells[i].minSpan, cellSize));
         }
         Gizmos.color = Color.white;
