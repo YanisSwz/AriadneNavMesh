@@ -6,6 +6,8 @@ public class GeometryGetter : MonoBehaviour
 {
     private List<Vector3> vertices = new List<Vector3>();
     private List<int> triangles = new List<int>();
+    public List<Vector3> Vertices {  get { return vertices; } }
+    public List<int> Indices { get { return triangles; } }
 
     void Start()
     {
@@ -70,10 +72,5 @@ public class GeometryGetter : MonoBehaviour
             + "\n" + vertices.Count + " vertices in scene"
             + "\n" + triangles.Count / 3 + " triangles in scene"
             );
-    }
-
-    public void GenerateGrid() 
-    {
-        
     }
 }
