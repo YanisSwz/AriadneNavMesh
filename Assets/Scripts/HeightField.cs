@@ -2,20 +2,70 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
+public class Span
+{
+    public Span(float _min, float _max)
+    {
+        min = _min;
+        max = _max;
+    }
+
+    public float min = -1;
+    public float max = -1;
+
+    public bool Intersects(Span other)
+    {
+        return (other.min >= min && other.min <= max) || (other.max <= max && other.max >= min);
+    }
+}
+
 public class Cell
 {
-    public Cell(int _X, int _Z, float _minSpan = 0f, float _maxSpan = 0f)
+    public Cell(int _X, int _Z)
     {
         X = _X;
         Z = _Z;
-        minSpan = _minSpan;
-        maxSpan = _maxSpan;
     }
 
-    public float minSpan;
-    public float maxSpan;
-    public int X;
-    public int Z;
+    public List<Span> spans = new List<Span>();
+    public int X = -1;
+    public int Z = -1;
+
+    public void AddSpan(float min, float max)
+    {
+        Span newSpan = new Span(min, max);
+        int index = -1;
+        bool broke = false;
+        List<Span> oldSpans = new(spans);
+        foreach (Span currentSpan in oldSpans)
+        {
+            ++index;
+            if (currentSpan.min > newSpan.max)
+            {
+                broke = true;
+                break;
+            }
+
+            if (currentSpan.max < newSpan.min)
+            {
+                continue;
+            }
+            else
+            {
+                if (currentSpan.min < newSpan.min)
+                    newSpan.min = currentSpan.min;
+                if (currentSpan.max > newSpan.max)
+                    newSpan.max = currentSpan.max;
+
+                spans.RemoveAt(index);
+                --index;
+            }
+        }
+        if (!broke)
+            spans.Add(newSpan);
+        else
+            spans.Insert(Mathf.Clamp(index, 0, spans.Count), newSpan);
+    }
 }
 
 [ExecuteInEditMode]
@@ -25,6 +75,8 @@ public class HeightField : MonoBehaviour
     [SerializeField] Transform v0;
     [SerializeField] Transform v1;
     [SerializeField] Transform v2;
+    [SerializeField] Color spanColor = Color.white;
+    [SerializeField] Color boxColor = Color.white;
 
     int z0 = 0;
     int z1 = 0;
@@ -35,6 +87,7 @@ public class HeightField : MonoBehaviour
     public int cellCount = 10;
     public int cellCountX = 10;
     public int cellCountZ = 10;
+    [Range(0.1f, 1f)]
     public float cellSize = 1;
     public float cellHeight = 2;
     public Vector3 minBounds = Vector3.zero;
@@ -60,26 +113,26 @@ public class HeightField : MonoBehaviour
         for (int i = 0; i < cellCount; ++i)
         {
             center = new Vector3(cellSize * (i / cellCountZ + 0.5f), cellHeight / 2f, cellSize * (i % cellCountZ + 0.5f)) + minBounds;
-            cells.Add(new Cell(i / cellCountZ, i % cellCountZ, minBounds.y, minBounds.y));
+            cells.Add(new Cell(i / cellCountZ, i % cellCountZ));
         }
 
-        RasterizeTriangle(v0.position, v1.position, v2.position);
-
-
-        //if (geometryGetter && geometryGetter.Vertices.Count > 0)
-        //{
-        //    for (int i = 0; i < geometryGetter.Indices.Count; i += 3)
-        //    {
-        //        Vector3 v0 = geometryGetter.Vertices[geometryGetter.Indices[i]];
-        //        Vector3 v1 = geometryGetter.Vertices[geometryGetter.Indices[i + 1]];
-        //        Vector3 v2 = geometryGetter.Vertices[geometryGetter.Indices[i + 2]];
-        //        RasterizeTriangle(v0, v1, v2);
-        //    }
-        //}
+        //RasterizeTriangle(v0.position, v1.position, v2.position);
+        geometryGetter.GetAllVertices();
+        if (geometryGetter && geometryGetter.Vertices.Count > 0)
+        {
+            for (int i = 0; i < geometryGetter.Indices.Count; i += 3)
+            {
+                Vector3 v0 = geometryGetter.Vertices[geometryGetter.Indices[i]];
+                Vector3 v1 = geometryGetter.Vertices[geometryGetter.Indices[i + 1]];
+                Vector3 v2 = geometryGetter.Vertices[geometryGetter.Indices[i + 2]];
+                RasterizeTriangle(v0, v1, v2);
+            }
+        }
     }
 
     public void OnDrawGizmos()
     {
+        DrawBoundingBox();
         DrawGrid();
     }
 
@@ -89,21 +142,33 @@ public class HeightField : MonoBehaviour
         if (cells.Count == 0)
             return;
 
-        Vector3 center = Vector3.zero;
-        for (int i = 0; i < cellCount; ++i)
+        if (cellSize >= 0.15f)
         {
-            center = new Vector3(cellSize * (cells[i].X + 0.5f), cellHeight / 2f, cellSize * (cells[i].Z + 0.5f)) + minBounds;
-            Gizmos.DrawWireCube(center, new Vector3(cellSize, cellHeight, cellSize));
+            Vector3 center = Vector3.zero;
+            for (int i = 0; i < cellCount; ++i)
+            {
+                center = new Vector3(cellSize * (cells[i].X + 0.5f), cellHeight / 2f, cellSize * (cells[i].Z + 0.5f)) + minBounds;
+                Gizmos.DrawWireCube(center, new Vector3(cellSize, cellHeight, cellSize));
+            }
         }
 
-        Gizmos.color = Color.green;
+        Gizmos.color = spanColor;
+
         for (int i = 0; i < cellCount; ++i)
         {
-            Vector3 height = new Vector3(cellSize * (cells[i].X + 0.5f) + minBounds.x, (cells[i].maxSpan + cells[i].minSpan) / 2f, cellSize * (cells[i].Z + 0.5f) + minBounds.z);
-            if (cells[i].maxSpan - cells[i].minSpan > 0f)
-                Gizmos.DrawCube(height, new Vector3(cellSize, cells[i].maxSpan - cells[i].minSpan, cellSize));
+            foreach (Span span in cells[i].spans)
+            {
+                Vector3 height = new Vector3(cellSize * (cells[i].X + 0.5f) + minBounds.x, (span.max + span.min) / 2f, cellSize * (cells[i].Z + 0.5f) + minBounds.z);
+                Gizmos.DrawCube(height, new Vector3(cellSize, span.max - span.min, cellSize));
+            }
         }
         Gizmos.color = Color.white;
+    }
+
+    private void DrawBoundingBox() 
+    {
+        Gizmos.color = boxColor;
+        Gizmos.DrawWireCube(boxCollider.transform.position, boxCollider.size);
     }
     #endregion
 
@@ -124,8 +189,7 @@ public class HeightField : MonoBehaviour
         z0 = (int)((triMinAABB[2] - minBounds[2]) / cellSize);
         z1 = (int)((triMaxAABB[2] - minBounds[2]) / cellSize);
 
-        // use -1 rather than 0 to cut the polygon properly at the start of the tile
-        z0 = Math.Clamp(z0, -1, cellCountZ - 1);
+        z0 = Math.Clamp(z0, 0, cellCountZ - 1);
         z1 = Math.Clamp(z1, 0, cellCountZ - 1);
 
 
@@ -133,8 +197,7 @@ public class HeightField : MonoBehaviour
         x0 = (int)((triMinAABB[0] - minBounds[0]) / cellSize);
         x1 = (int)((triMaxAABB[0] - minBounds[0]) / cellSize);
 
-        // use -1 rather than 0 to cut the polygon properly at the start of the tile
-        x0 = Math.Clamp(x0, -1, cellCountX - 1);
+        x0 = Math.Clamp(x0, 0, cellCountX - 1);
         x1 = Math.Clamp(x1, 0, cellCountX - 1);
     }
 
@@ -213,6 +276,8 @@ public class HeightField : MonoBehaviour
                 clippedPoly = ClipPoly(Vector3.forward, cellPos, polygonPoints);
                 clippedPoly = ClipPoly(-Vector3.forward, cellPos + Vector3.forward * cellSize + Vector3.right * cellSize, clippedPoly);
 
+                if (clippedPoly.Count == 0)
+                    continue;
 
                 // Add spans
                 float minHeight = Mathf.Infinity;
@@ -226,8 +291,19 @@ public class HeightField : MonoBehaviour
                         maxHeight = clippedPoly[i].y;
                 }
 
-                cells[z + x * cellCountZ].minSpan = minHeight;
-                cells[z + x * cellCountZ].maxSpan = maxHeight;
+                // Skip span if completely oustide of heightfield
+                if (maxHeight < boxCollider.bounds.min.y)
+                    continue;
+                if (minHeight > boxCollider.bounds.max.y)
+                    continue;
+
+                // Clamp span to heighfield
+                if (minHeight < boxCollider.bounds.min.y)
+                    minHeight = boxCollider.bounds.min.y;
+                if (maxHeight > boxCollider.bounds.max.y)
+                    maxHeight = boxCollider.bounds.max.y;
+
+                cells[z + x * cellCountZ].AddSpan(minHeight, maxHeight);
             }
         }
     }

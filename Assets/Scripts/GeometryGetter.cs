@@ -16,12 +16,12 @@ public class GeometryGetter : MonoBehaviour
 
     private void OnDrawGizmos()
     {
-        for (int i = 0; i < triangles.Count - 3; i += 3)
-        {
-            Gizmos.DrawLine(vertices[triangles[i]], vertices[triangles[i + 1]]);
-            Gizmos.DrawLine(vertices[triangles[i + 1]], vertices[triangles[i + 2]]);
-            Gizmos.DrawLine(vertices[triangles[i + 2]], vertices[triangles[i]]);
-        }
+        //for (int i = 0; i < triangles.Count - 3; i += 3)
+        //{
+        //    Gizmos.DrawLine(vertices[triangles[i]], vertices[triangles[i + 1]]);
+        //    Gizmos.DrawLine(vertices[triangles[i + 1]], vertices[triangles[i + 2]]);
+        //    Gizmos.DrawLine(vertices[triangles[i + 2]], vertices[triangles[i]]);
+        //}
     }
 
     // Update is called once per frame
