@@ -4,19 +4,16 @@ using UnityEngine;
 
 public class Span
 {
-    public Span(float _min, float _max)
+    public Span(int _min, int _max, AreaID _area)
     {
         min = _min;
         max = _max;
+        area = _area;
     }
 
-    public float min = -1;
-    public float max = -1;
-
-    public bool Intersects(Span other)
-    {
-        return (other.min >= min && other.min <= max) || (other.max <= max && other.max >= min);
-    }
+    public int min = -1;
+    public int max = -1;
+    public AreaID area = AreaID.NULL;
 }
 
 public class Cell
@@ -31,9 +28,9 @@ public class Cell
     public int X = -1;
     public int Z = -1;
 
-    public void AddSpan(float min, float max)
+    public void AddSpan(int min, int max, AreaID area, int flagMergeThreshold)
     {
-        Span newSpan = new Span(min, max);
+        Span newSpan = new Span(min, max, area);
         int index = -1;
         bool broke = false;
         List<Span> oldSpans = new(spans);
@@ -52,6 +49,17 @@ public class Cell
             }
             else
             {
+                // Flag merging
+                if (Math.Abs(newSpan.max - currentSpan.max) <= flagMergeThreshold)
+                {
+                    newSpan.area = (AreaID)Math.Max((int)newSpan.area, (int)currentSpan.area);
+                }
+                else if(currentSpan.max > newSpan.max)
+                {
+                    newSpan.area = currentSpan.area;
+                }
+
+                // Values merging
                 if (currentSpan.min < newSpan.min)
                     newSpan.min = currentSpan.min;
                 if (currentSpan.max > newSpan.max)
@@ -72,26 +80,26 @@ public class Cell
 [RequireComponent(typeof(BoxCollider))]
 public class HeightField : MonoBehaviour
 {
-    [SerializeField] Transform v0;
-    [SerializeField] Transform v1;
-    [SerializeField] Transform v2;
-    [SerializeField] Color spanColor = Color.white;
-    [SerializeField] Color boxColor = Color.white;
-
-    int z0 = 0;
-    int z1 = 0;
-    int x0 = 0;
-    int x1 = 0;
-
     public GeometryGetter geometryGetter = null;
+    [Range(0.1f, 1f)]
+    public float cellSize = 0.5f;
+    [Range(0.025f, 1f)]
+    public float cellHeight = 0.5f;
+    [Range(0, 5)]
+    public int flagMergeThreshold = 1;
+
+    [Header("--- Debug ---")]
+    [SerializeField] private bool drawDebug = true;
+    [SerializeField] private Color boxColor = Color.white;
+    [SerializeField] private Color heightColor = Color.white;
+    [SerializeField] private Color gridColor = Color.white;
+    
     public int cellCount = 10;
     public int cellCountX = 10;
     public int cellCountZ = 10;
-    [Range(0.1f, 1f)]
-    public float cellSize = 1;
-    public float cellHeight = 2;
-    public Vector3 minBounds = Vector3.zero;
-    public Vector3 maxBounds = Vector3.zero;
+
+    private Vector3 minBounds = Vector3.zero;
+    private Vector3 maxBounds = Vector3.zero;
     private BoxCollider boxCollider = new BoxCollider();
     private List<Cell> cells = new List<Cell>();
 
@@ -116,24 +124,23 @@ public class HeightField : MonoBehaviour
             cells.Add(new Cell(i / cellCountZ, i % cellCountZ));
         }
 
-        //RasterizeTriangle(v0.position, v1.position, v2.position);
-        geometryGetter.GetAllVertices();
-        if (geometryGetter && geometryGetter.Vertices.Count > 0)
+        geometryGetter.GetGeometry();
+        if (geometryGetter && geometryGetter.Triangles.Count > 0)
         {
-            for (int i = 0; i < geometryGetter.Indices.Count; i += 3)
+            foreach (Triangle tri in geometryGetter.Triangles)
             {
-                Vector3 v0 = geometryGetter.Vertices[geometryGetter.Indices[i]];
-                Vector3 v1 = geometryGetter.Vertices[geometryGetter.Indices[i + 1]];
-                Vector3 v2 = geometryGetter.Vertices[geometryGetter.Indices[i + 2]];
-                RasterizeTriangle(v0, v1, v2);
+                RasterizeTriangle(tri.vertices[0], tri.vertices[1], tri.vertices[2], tri.areaID);
             }
         }
     }
 
     public void OnDrawGizmos()
     {
-        DrawBoundingBox();
-        DrawGrid();
+        if (drawDebug)
+        {
+            DrawBoundingBox();
+            DrawGrid();
+        }
     }
 
     #region Draw functions
@@ -142,30 +149,42 @@ public class HeightField : MonoBehaviour
         if (cells.Count == 0)
             return;
 
-        if (cellSize >= 0.15f)
+        Gizmos.color = gridColor;
+
+        Vector3 center = Vector3.zero;
+        if (cellSize >= 0.2f)
         {
-            Vector3 center = Vector3.zero;
             for (int i = 0; i < cellCount; ++i)
             {
-                center = new Vector3(cellSize * (cells[i].X + 0.5f), cellHeight / 2f, cellSize * (cells[i].Z + 0.5f)) + minBounds;
-                Gizmos.DrawWireCube(center, new Vector3(cellSize, cellHeight, cellSize));
+                center = new Vector3(cellSize * (cells[i].X + 0.5f), 0f, cellSize * (cells[i].Z + 0.5f)) + minBounds;
+                Gizmos.DrawWireCube(center, new Vector3(cellSize, 0f, cellSize));
             }
         }
 
-        Gizmos.color = spanColor;
+        Gizmos.color = heightColor;
+
+        if (cellHeight >= 0.2f)
+        {
+            for (int j = 0; j < (int)(boxCollider.size.y / cellHeight); ++j)
+            {
+                center = new Vector3(boxCollider.transform.position.x, cellHeight * (j) + minBounds.y, boxCollider.transform.position.z);
+                Gizmos.DrawWireCube(center, new Vector3(boxCollider.size.x, 0f, boxCollider.size.z));
+            }
+        }
 
         for (int i = 0; i < cellCount; ++i)
         {
             foreach (Span span in cells[i].spans)
             {
-                Vector3 height = new Vector3(cellSize * (cells[i].X + 0.5f) + minBounds.x, (span.max + span.min) / 2f, cellSize * (cells[i].Z + 0.5f) + minBounds.z);
-                Gizmos.DrawCube(height, new Vector3(cellSize, span.max - span.min, cellSize));
+                Vector3 height = new Vector3(cellSize * (cells[i].X + 0.5f), cellHeight * ((span.max + span.min) / 2f), cellSize * (cells[i].Z + 0.5f)) + minBounds;
+                Gizmos.color = span.area == AreaID.WALKABLE ? Color.green : Color.red;
+                Gizmos.DrawCube(height, new Vector3(cellSize, (span.max - span.min) * cellHeight, cellSize));
             }
         }
         Gizmos.color = Color.white;
     }
 
-    private void DrawBoundingBox() 
+    private void DrawBoundingBox()
     {
         Gizmos.color = boxColor;
         Gizmos.DrawWireCube(boxCollider.transform.position, boxCollider.size);
@@ -183,22 +202,21 @@ public class HeightField : MonoBehaviour
         triMaxAABB.z = Mathf.Max(point1.z, Mathf.Max(point2.z, point3.z));
     }
 
-    private void MapToGrid(Vector3 triMinAABB, Vector3 triMaxAABB)
+    private void MapToGrid(Vector3 triMinAABB, Vector3 triMaxAABB, ref int x0, ref int x1, ref int z0, ref int z1)
     {
-        // Calculate the footprint of the triangle on the grid's z-axis
-        z0 = (int)((triMinAABB[2] - minBounds[2]) / cellSize);
-        z1 = (int)((triMaxAABB[2] - minBounds[2]) / cellSize);
-
-        z0 = Math.Clamp(z0, 0, cellCountZ - 1);
-        z1 = Math.Clamp(z1, 0, cellCountZ - 1);
-
-
         // Calculate the footprint of the triangle on the grid's x-axis
         x0 = (int)((triMinAABB[0] - minBounds[0]) / cellSize);
         x1 = (int)((triMaxAABB[0] - minBounds[0]) / cellSize);
 
         x0 = Math.Clamp(x0, 0, cellCountX - 1);
         x1 = Math.Clamp(x1, 0, cellCountX - 1);
+
+        // Calculate the footprint of the triangle on the grid's z-axis
+        z0 = (int)((triMinAABB[2] - minBounds[2]) / cellSize);
+        z1 = (int)((triMaxAABB[2] - minBounds[2]) / cellSize);
+
+        z0 = Math.Clamp(z0, 0, cellCountZ - 1);
+        z1 = Math.Clamp(z1, 0, cellCountZ - 1);
     }
 
     private List<Vector3> ProcessSegment(Vector3 axis, Vector3 cellPos, Vector3 point1, Vector3 point2)
@@ -245,13 +263,17 @@ public class HeightField : MonoBehaviour
         return points;
     }
 
-    private void RasterizeTriangle(Vector3 point1, Vector3 point2, Vector3 point3)
+    private void RasterizeTriangle(Vector3 point1, Vector3 point2, Vector3 point3, AreaID triAreaID)
     {
         Vector3 triMinAABB = new Vector3();
         Vector3 triMaxAABB = new Vector3();
         GetBoundingBox(point1, point2, point3, ref triMinAABB, ref triMaxAABB);
+        int x0 = -1;
+        int x1 = -1;
+        int z0 = -1;
+        int z1 = -1;
         if (boxCollider.bounds.Intersects(new Bounds((triMinAABB + triMaxAABB) / 2f, triMaxAABB - triMinAABB)))
-            MapToGrid(triMinAABB, triMaxAABB);
+            MapToGrid(triMinAABB, triMaxAABB, ref x0, ref x1, ref z0, ref z1);
         else
             return;
 
@@ -291,19 +313,26 @@ public class HeightField : MonoBehaviour
                         maxHeight = clippedPoly[i].y;
                 }
 
+                minHeight -= minBounds[1];
+                maxHeight -= minBounds[1];
+
                 // Skip span if completely oustide of heightfield
-                if (maxHeight < boxCollider.bounds.min.y)
+                if (maxHeight < 0f)
                     continue;
-                if (minHeight > boxCollider.bounds.max.y)
+                if (minHeight > maxBounds[1] - minBounds[1])
                     continue;
 
                 // Clamp span to heighfield
-                if (minHeight < boxCollider.bounds.min.y)
-                    minHeight = boxCollider.bounds.min.y;
-                if (maxHeight > boxCollider.bounds.max.y)
-                    maxHeight = boxCollider.bounds.max.y;
+                if (minHeight < 0f)
+                    minHeight = 0f;
+                if (maxHeight > maxBounds[1] - minBounds[1])
+                    maxHeight = maxBounds[1] - minBounds[1];
 
-                cells[z + x * cellCountZ].AddSpan(minHeight, maxHeight);
+                // Map spans to cell indices
+                int minIndex = Math.Clamp((int)Math.Floor(minHeight / cellHeight), 0, (int)(boxCollider.size.y / cellHeight));
+                int maxIndex = Math.Clamp((int)Math.Ceiling(maxHeight / cellHeight), 0, (int)(boxCollider.size.y / cellHeight));
+
+                cells[z + x * cellCountZ].AddSpan(minIndex, maxIndex, triAreaID, flagMergeThreshold);
             }
         }
     }

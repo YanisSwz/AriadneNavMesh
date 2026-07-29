@@ -12,11 +12,11 @@ public class GeometryGetterEditor : Editor
 
         if (GUILayout.Button("Clear Geometry"))
         {
-            geometryGetter.ClearAllVertices();
+            geometryGetter.ClearGeometry();
         }
         else if (GUILayout.Button("Get Geometry"))
         {
-            geometryGetter.GetAllVertices();
+            geometryGetter.GetGeometry();
         }
     }
 }
