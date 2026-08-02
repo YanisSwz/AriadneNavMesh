@@ -5,7 +5,7 @@ using UnityEngine;
 public enum AreaID 
 {
     NULL = 0,
-    WALKABLE = 1
+    WALKABLE = int.MaxValue,
 }
 
 public struct Triangle 
@@ -31,10 +31,6 @@ public class GeometryGetter : MonoBehaviour
     private List<Triangle> triangles = new List<Triangle>();
     public List<Triangle> Triangles { get { return triangles; } }
 
-    void Start()
-    {
-        
-    }
 
     private void OnDrawGizmos()
     {
@@ -52,12 +48,6 @@ public class GeometryGetter : MonoBehaviour
                 Gizmos.DrawLine(center, center + tri.normal);
             }
         }
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
-        
     }
 
     public void ClearGeometry()
