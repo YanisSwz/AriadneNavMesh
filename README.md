@@ -12,7 +12,7 @@ Started with a GeometryGetter class to see how I could retrieve scene geometry i
 
 ### Heightfield
 
-THE key element of navmesh generation is the heightfield. The heightfield is by a bounding box, and its floor is a X-Z grid. Its first use is to voxelize triangles and get their spans (y-extent across a cell of the X-Z grid). I started with a centered grid, but I later moved-on to a grid starting at the bounding box minimun X and Z, for more convenient coordinates.
+THE key element of navmesh generation is the heightfield. The heightfield is delimited by a bounding box, and its floor is a X-Z grid. Its used to voxelize triangles and get their spans (y-extent across a cell of the X-Z grid). I started with a centered grid, but I later moved-on to a grid starting at the bounding box minimun X and Z, for more convenient coordinates.
 
 ![Grid](./Visuals/Grid.gif)
 
@@ -84,7 +84,7 @@ I then realized Recast actually uses discretized spans, so I switched from conti
 
 ## Walkable filtering
 
-I then moved on to walkable filtering, meaning tagging spans as walkable ornot walkable based on multiple parameters (slope, climbable height and walkable height).
+I then moved on to walkable filtering, meaning tagging spans as walkable or not walkable based on multiple parameters (slope, climbable height and walkable height).
 
 ### Geometry input
 
@@ -129,19 +129,23 @@ The last one is used to tag as unwalkable spans which don't have enough headspac
 ## Result
 
 The full pipeline at the moment: 
-- Geometry input
-- Rasterization
-- Walkable filtering
+- Geometry input 
+- Voxelization 
+- Walkable filtering 
 
 ![Full pipeline](./Visuals/FullPipeline.gif)
+![Final scene](./Visuals/FinalResult.png)
+
+Benchmark for the scene, which has 2 700 vertices and 900 triangles fed into an heightfield of 36 000 cells with cell size = 0.1 and cell height = 0.025:
+- Geometry input: ~0.75ms - 0.80ms
+- Voxelization: ~210ms - 245ms
+- Walkable filtering: ~8ms - 10ms
+
+Lot of room for optimization. As we can see, the current bottleneck is triangle voxelization.
 
 ## Roadmap
 
 Next steps would be:
-
-- Build the compact heightfield
-- Erode walkable area by agent radius
-- Build the distance field
 - Region partitioning
 - Contour extraction
 - Polygon mesh generation
