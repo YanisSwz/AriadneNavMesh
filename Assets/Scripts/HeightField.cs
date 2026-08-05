@@ -172,7 +172,7 @@ public class HeightField : MonoBehaviour
     }
     #endregion
 
-    #region Raterization functions
+    #region Rasterization functions
     private void CreateHeightField()
     {
         minBounds = boxCollider.bounds.min;

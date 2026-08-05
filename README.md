@@ -77,6 +77,76 @@ With skipping and clamping:
 
 ![Skip and clamp](./Visuals/ExceedingSpans.gif)
 
+I then realized Recast actually uses discretized spans, so I switched from continuous (float) to discretized (int) spans with a cell height parameter.
+
+![Disretized](./Visuals/Discretized.gif)
+![Cell height](./Visuals/Cell%20height.gif)
+
+## Walkable filtering
+
+I then moved on to walkable filtering, meaning tagging spans as walkable ornot walkable based on multiple parameters (slope, climbable height and walkable height).
+
+### Geometry input
+
+The first step was to add normals to triangles in the geometry getter, and tag the triangle as walkable or not walkable depending on the walkable slope (normal's angle). 
+
+![Sorted Normals](./Visuals/SortedNormals.png)
+
+### Spans
+
+The triangle's tag get carried over to the span. 
+
+![Slope](./Visuals/Slope.gif)
+
+However, I had to add some merging logic:
+- when the two span's top are near enough to each other (climbable height), we take the max area tag (walkable > not walkable)
+- else we use the topmost span's tag
+
+![Flag merging](./Visuals/FlagMerging.gif)
+
+Once we have our merged spans, we move on to apply 3 filters.
+
+![No filter](./Visuals/NoFilter.png)
+
+### Low hanging filter
+
+The first one is used to tag as walkable low hanging unwalkable spans (<= climbable height) sitting on top of walkable spans.
+
+![Low hanging](./Visuals/LowHanging.png)
+
+### Ledges filter
+
+The second one is the most technical, it's used to tag as unwalkable all spans sitting at the edges or near large terrain variations.
+
+![Ledges](./Visuals/Ledges.png)
+
+### Low height filter
+
+The last one is used to tag as unwalkable spans which don't have enough headspace for an agent to go under (< walkable height).
+
+![Low height](./Visuals/LowHeight.png)
+
+## Result
+
+The full pipeline at the moment: 
+- Geometry input
+- Rasterization
+- Walkable filtering
+
+![Full pipeline](./Visuals/FullPipeline.gif)
+
+## Roadmap
+
+Next steps would be:
+
+- Build the compact heightfield
+- Erode walkable area by agent radius
+- Build the distance field
+- Region partitioning
+- Contour extraction
+- Polygon mesh generation
+
 ## Bibliography
 
-Sutherland-Hodgman polygon clipping algorithm: https://www.youtube.com/watch?v=Euuw72Ymu0M
+- Recast repository: https://github.com/recastnavigation/recastnavigation
+- Sutherland-Hodgman polygon clipping algorithm: https://www.youtube.com/watch?v=Euuw72Ymu0M
