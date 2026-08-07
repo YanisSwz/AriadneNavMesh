@@ -10,14 +10,14 @@ public enum AreaID
 
 public struct Triangle 
 {
-    public Triangle(List<Vector3> _vertices, Vector3 _normal, AreaID _areaID = AreaID.NULL) 
+    public Triangle(Vector3[] _vertices, Vector3 _normal, AreaID _areaID = AreaID.NULL) 
     {
-        vertices = new List<Vector3>(_vertices);
+        vertices = _vertices;
         normal = _normal;
         areaID = _areaID;
     }
 
-    public List<Vector3> vertices;
+    public Vector3[] vertices;
     public Vector3 normal;
     public AreaID areaID;
 }
@@ -30,7 +30,7 @@ public class GeometryGetter : MonoBehaviour
 
     private List<Triangle> triangles = new List<Triangle>();
     public List<Triangle> Triangles { get { return triangles; } }
-
+    private int verticesCount = 0;
 
     private void OnDrawGizmos()
     {
@@ -58,8 +58,8 @@ public class GeometryGetter : MonoBehaviour
 
     public void GetGeometry() 
     {
-        System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
-        sw.Start();
+        //System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
+        //sw.Start();
         triangles.Clear();
 
         MeshFilter[] meshes = FindObjectsByType<MeshFilter>(FindObjectsSortMode.None);
@@ -74,11 +74,13 @@ public class GeometryGetter : MonoBehaviour
                 int[] meshTriangles = mesh.triangles;
                 Vector3[] meshNormals = mesh.normals;
 
+                verticesCount += meshVertices.Length;
+
                 for (int i = 0; i < meshTriangles.Length; i+=3)
                 {
                     Triangle tri = new Triangle
                         (
-                            new List<Vector3>()
+                            new Vector3[]
                             {
                                 filter.transform.TransformPoint(meshVertices[meshTriangles[i]]),
                                 filter.transform.TransformPoint(meshVertices[meshTriangles[i + 1]]),
@@ -93,11 +95,11 @@ public class GeometryGetter : MonoBehaviour
                 }
             }
         }
-        sw.Stop();
-        Debug.Log(
-            "\nExecuted in " + sw.Elapsed.TotalMilliseconds + "ms"
-            + "\n" + triangles.Count * 3 + " vertices in scene"
-            + "\n" + triangles.Count + " triangles in scene"
-            );
+        //sw.Stop();
+        //Debug.Log(
+        //    "\nExecuted in " + sw.Elapsed.TotalMilliseconds + "ms"
+        //    + "\n" + verticesCount + " vertices in scene"
+        //    + "\n" + triangles.Count + " triangles in scene"
+        //    );
     }
 }

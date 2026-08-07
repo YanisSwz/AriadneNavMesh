@@ -108,6 +108,8 @@ public class HeightField : MonoBehaviour
     private List<Cell> cells = new List<Cell>();
     private int walkableClimbSpans = 0;
     private int walkableHeightSpans = 0;
+    private float inverseCellSize = 1f;
+    private float inverseCellHeight = 1f;
 
     public void Start()
     {
@@ -177,13 +179,17 @@ public class HeightField : MonoBehaviour
     {
         minBounds = boxCollider.bounds.min;
         maxBounds = boxCollider.bounds.max;
-        cellCountX = (int)(boxCollider.size.x / cellSize);
-        cellCountZ = (int)(boxCollider.size.z / cellSize);
+        inverseCellSize = 1f / cellSize;
+        inverseCellHeight = 1f / cellHeight;
+        cellCountX = Mathf.FloorToInt(boxCollider.size.x * inverseCellSize);
+        cellCountZ = Mathf.FloorToInt(boxCollider.size.z * inverseCellSize);
         cellCount = cellCountX * cellCountZ;
-        cellCountY = (int)(boxCollider.size.y / cellHeight);
-        walkableClimbSpans = Mathf.CeilToInt(walkableClimb / cellHeight);
-        walkableHeightSpans = Mathf.CeilToInt(walkableHeight / cellHeight);
+        cellCountY = Mathf.FloorToInt(boxCollider.size.y * inverseCellHeight);
+        walkableClimbSpans = Mathf.CeilToInt(walkableClimb * inverseCellHeight);
+        walkableHeightSpans = Mathf.CeilToInt(walkableHeight * inverseCellHeight);
 
+        System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
+        sw.Start();
         cells.Clear();
         for (int i = 0; i < cellCount; ++i)
         {
@@ -195,10 +201,13 @@ public class HeightField : MonoBehaviour
             geometryGetter.GetGeometry();
             if (geometryGetter.Triangles.Count > 0)
             {
-                foreach (Triangle tri in geometryGetter.Triangles)
+                
+                for(int i = 0; i < geometryGetter.Triangles.Count; ++i)
                 {
-                    RasterizeTriangle(tri.vertices[0], tri.vertices[1], tri.vertices[2], tri.areaID);
+                    RasterizeTriangle(geometryGetter.Triangles[i].vertices[0], geometryGetter.Triangles[i].vertices[1], geometryGetter.Triangles[i].vertices[2], geometryGetter.Triangles[i].areaID);
                 }
+                sw.Stop();
+                Debug.Log("\nExecution time:  " + sw.Elapsed.TotalMilliseconds + "ms");
 
                 if (filterLowHanging)
                     FilterLowHangingObstacles();
@@ -224,26 +233,32 @@ public class HeightField : MonoBehaviour
     private void MapToGrid(Vector3 triMinAABB, Vector3 triMaxAABB, ref int x0, ref int x1, ref int z0, ref int z1)
     {
         // Calculate the footprint of the triangle on the grid's x-axis
-        x0 = (int)((triMinAABB[0] - minBounds[0]) / cellSize);
-        x1 = (int)((triMaxAABB[0] - minBounds[0]) / cellSize);
+        x0 = (int)((triMinAABB[0] - minBounds[0]) * inverseCellSize);
+        x1 = (int)((triMaxAABB[0] - minBounds[0]) * inverseCellSize);
 
         x0 = Math.Clamp(x0, 0, cellCountX - 1);
         x1 = Math.Clamp(x1, 0, cellCountX - 1);
 
         // Calculate the footprint of the triangle on the grid's z-axis
-        z0 = (int)((triMinAABB[2] - minBounds[2]) / cellSize);
-        z1 = (int)((triMaxAABB[2] - minBounds[2]) / cellSize);
+        z0 = (int)((triMinAABB[2] - minBounds[2]) * inverseCellSize);
+        z1 = (int)((triMaxAABB[2] - minBounds[2]) * inverseCellSize);
 
         z0 = Math.Clamp(z0, 0, cellCountZ - 1);
         z1 = Math.Clamp(z1, 0, cellCountZ - 1);
     }
+    
+    private Vector3 ComputeIntersection(Vector3 point1, Vector3 point2, Vector3 point3, Vector3 axisNormal)
+    {
+        Vector3 N = axisNormal;
+        Vector3 V = point2 - point1;
+        float t = Vector3.Dot(point3 - point1, N) / Vector3.Dot(V, N);
+        return point1 + t * V;
+    }
 
-    // TODO: change to normal instead of tangent
-    private List<Vector3> ProcessSegment(Vector3 axis, Vector3 cellPos, Vector3 point1, Vector3 point2)
+    private List<Vector3> ProcessSegment(Vector3 axisNormal, Vector3 cellPos, Vector3 point1, Vector3 point2)
     {
         List<Vector3> points = new List<Vector3>();
-        // We get away with this because we only ever use X and Z components (on a 2D grid)
-        Vector3 axisNormal = Quaternion.AngleAxis(90f, Vector3.up) * axis;
+
         float D1 = Vector3.Dot(axisNormal, point1 - cellPos);
         float D2 = Vector3.Dot(axisNormal, point2 - cellPos);
 
@@ -264,20 +279,12 @@ public class HeightField : MonoBehaviour
         return points;
     }
 
-    private Vector3 ComputeIntersection(Vector3 point1, Vector3 point2, Vector3 point3, Vector3 axisNormal)
-    {
-        Vector3 N = axisNormal.normalized;
-        Vector3 V = (point2 - point1).normalized;
-        float t = Vector3.Dot(point3 - point1, N) / Vector3.Dot(V, N);
-        return point1 + t * V;
-    }
-
-    private List<Vector3> ClipPoly(Vector3 axis, Vector3 cellPos, List<Vector3> vertices)
+    private List<Vector3> ClipPoly(Vector3 axisNormal, Vector3 cellPos, List<Vector3> vertices)
     {
         List<Vector3> points = new List<Vector3>();
         for (int i = 0; i < vertices.Count; ++i)
         {
-            points.AddRange(ProcessSegment(axis, cellPos, vertices[i], vertices[(i + 1) % vertices.Count]));
+            points.AddRange(ProcessSegment(axisNormal, cellPos, vertices[i], vertices[(i + 1) % vertices.Count]));
         }
 
         return points;
@@ -285,40 +292,37 @@ public class HeightField : MonoBehaviour
 
     private void RasterizeTriangle(Vector3 point1, Vector3 point2, Vector3 point3, AreaID triAreaID)
     {
-        Vector3 triMinAABB = new Vector3();
-        Vector3 triMaxAABB = new Vector3();
+        Vector3 triMinAABB = Vector3.zero;
+        Vector3 triMaxAABB = Vector3.zero;
         GetBoundingBox(point1, point2, point3, ref triMinAABB, ref triMaxAABB);
         int x0 = -1;
         int x1 = -1;
         int z0 = -1;
         int z1 = -1;
-        if (boxCollider.bounds.Intersects(new Bounds((triMinAABB + triMaxAABB) / 2f, triMaxAABB - triMinAABB)))
-            MapToGrid(triMinAABB, triMaxAABB, ref x0, ref x1, ref z0, ref z1);
-        else
+
+        if (!boxCollider.bounds.Intersects(new Bounds((triMinAABB + triMaxAABB) * 0.5f, triMaxAABB - triMinAABB)))
             return;
+
+        MapToGrid(triMinAABB, triMaxAABB, ref x0, ref x1, ref z0, ref z1);
 
         for (int z = z0; z <= z1; ++z)
         {
-            List<Vector3> polygonPoints = new List<Vector3>();
-            polygonPoints.Add(point1);
-            polygonPoints.Add(point2);
-            polygonPoints.Add(point3);
+            List<Vector3> polygonPoints = new List<Vector3>() { point1, point2, point3 };
 
-            Vector3 cellPos = new Vector3(cellSize * x0, cellHeight / 2f, cellSize * z) + minBounds;
+            Vector3 cellPos = new Vector3(cellSize * x0, 0f, cellSize * z) + minBounds;
             // Clip to row
-            polygonPoints = ClipPoly(-Vector3.right, cellPos, polygonPoints);
-            polygonPoints = ClipPoly(Vector3.right, cellPos + Vector3.forward * cellSize, polygonPoints);
+            polygonPoints = ClipPoly(Vector3.forward, cellPos, polygonPoints);
+            polygonPoints = ClipPoly(-Vector3.forward, cellPos + Vector3.forward * cellSize, polygonPoints);
 
             for (int x = x0; x <= x1; ++x)
             {
-                cellPos = new Vector3(cellSize * x, cellHeight / 2f, cellSize * z) + minBounds;
+                cellPos = new Vector3(cellSize * x, 0f, cellSize * z) + minBounds;
 
-                List<Vector3> clippedPoly = new List<Vector3>(polygonPoints);
                 // Clip to column
-                clippedPoly = ClipPoly(Vector3.forward, cellPos, polygonPoints);
-                clippedPoly = ClipPoly(-Vector3.forward, cellPos + Vector3.right * cellSize, clippedPoly);
+                List<Vector3> clippedPoly = ClipPoly(Vector3.right, cellPos, polygonPoints);
+                clippedPoly = ClipPoly(-Vector3.right, cellPos + Vector3.right * cellSize, clippedPoly);
 
-                if (clippedPoly.Count == 0)
+                if (clippedPoly.Count < 3)
                     continue;
 
                 // Add spans
@@ -349,8 +353,8 @@ public class HeightField : MonoBehaviour
                     maxHeight = maxBounds[1] - minBounds[1];
 
                 // Map spans to cell indices
-                int minIndex = Math.Clamp(Mathf.FloorToInt(minHeight / cellHeight), 0, cellCountY);
-                int maxIndex = Math.Clamp(Mathf.CeilToInt(maxHeight / cellHeight), 0, cellCountY);
+                int minIndex = Math.Clamp(Mathf.FloorToInt(minHeight * inverseCellHeight), 0, cellCountY);
+                int maxIndex = Math.Clamp(Mathf.CeilToInt(maxHeight * inverseCellHeight), 0, cellCountY);
 
                 cells[x + z * cellCountX].AddSpan(minIndex, maxIndex, triAreaID, walkableClimbSpans);
             }

@@ -126,6 +126,19 @@ The last one is used to tag as unwalkable spans which don't have enough headspac
 
 ![Low height](./Visuals/LowHeight.png)
 
+## Optimization
+
+![Final scene](./Visuals/FinalResult.png)
+
+Benchmark for this scene, which has 2 000 vertices and 900 triangles fed into an heightfield of 36 000 cells with cell size = 0.1 and cell height = 0.025:
+- Geometry input: ~0.75ms - 0.80ms
+- Voxelization: ~210ms - 245ms
+- Walkable filtering: ~8ms - 10ms
+
+Lot of room for optimization. As we can see, the current bottleneck is triangle voxelization.
+
+After a first basic pass (math simplifications) on Voxelization: ~160ms - 190ms
+
 ## Result
 
 The full pipeline at the moment: 
@@ -134,14 +147,6 @@ The full pipeline at the moment:
 - Walkable filtering 
 
 ![Full pipeline](./Visuals/FullPipeline.gif)
-![Final scene](./Visuals/FinalResult.png)
-
-Benchmark for the scene, which has 2 700 vertices and 900 triangles fed into an heightfield of 36 000 cells with cell size = 0.1 and cell height = 0.025:
-- Geometry input: ~0.75ms - 0.80ms
-- Voxelization: ~210ms - 245ms
-- Walkable filtering: ~8ms - 10ms
-
-Lot of room for optimization. As we can see, the current bottleneck is triangle voxelization.
 
 ## Roadmap
 
