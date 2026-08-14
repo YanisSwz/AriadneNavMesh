@@ -10,14 +10,18 @@ public enum AreaID
 
 public struct Triangle 
 {
-    public Triangle(Vector3[] _vertices, Vector3 _normal, AreaID _areaID = AreaID.NULL) 
+    public Triangle(Vector3 _point1, Vector3 _point2, Vector3 _point3, Vector3 _normal, AreaID _areaID = AreaID.NULL) 
     {
-        vertices = _vertices;
+        point1 = _point1;
+        point2 = _point2;
+        point3 = _point3;
         normal = _normal;
         areaID = _areaID;
     }
 
-    public Vector3[] vertices;
+    public Vector3 point1;
+    public Vector3 point2;
+    public Vector3 point3;
     public Vector3 normal;
     public AreaID areaID;
 }
@@ -39,12 +43,12 @@ public class GeometryGetter : MonoBehaviour
             foreach (Triangle tri in triangles)
             {
                 Gizmos.color = Color.white;
-                Gizmos.DrawLine(tri.vertices[0], tri.vertices[1]);
-                Gizmos.DrawLine(tri.vertices[1], tri.vertices[2]);
-                Gizmos.DrawLine(tri.vertices[2], tri.vertices[0]);
+                Gizmos.DrawLine(tri.point1, tri.point2);
+                Gizmos.DrawLine(tri.point2, tri.point3);
+                Gizmos.DrawLine(tri.point3, tri.point1);
 
                 Gizmos.color = tri.areaID == AreaID.WALKABLE ? Color.green : Color.red;
-                Vector3 center = (tri.vertices[0] + tri.vertices[1] + tri.vertices[2]) / 3f;
+                Vector3 center = (tri.point1 + tri.point2 + tri.point3) / 3f;
                 Gizmos.DrawLine(center, center + tri.normal);
             }
         }
@@ -56,11 +60,13 @@ public class GeometryGetter : MonoBehaviour
         Debug.Log("Cleared geometry");
     }
 
+    // TODO: dirty flag system and cache meshes
     public void GetGeometry() 
     {
         //System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
         //sw.Start();
         triangles.Clear();
+        verticesCount = 0;
 
         MeshFilter[] meshes = FindObjectsByType<MeshFilter>(FindObjectsSortMode.None);
         float walkableThreshold = Mathf.Cos(walkableSlopeAngle * Mathf.Deg2Rad);
@@ -78,14 +84,13 @@ public class GeometryGetter : MonoBehaviour
 
                 for (int i = 0; i < meshTriangles.Length; i+=3)
                 {
+                    Matrix4x4 localToWorld = filter.transform.localToWorldMatrix;
                     Triangle tri = new Triangle
                         (
-                            new Vector3[]
-                            {
-                                filter.transform.TransformPoint(meshVertices[meshTriangles[i]]),
-                                filter.transform.TransformPoint(meshVertices[meshTriangles[i + 1]]),
-                                filter.transform.TransformPoint(meshVertices[meshTriangles[i + 2]])
-                            },
+                            localToWorld.MultiplyPoint3x4(meshVertices[meshTriangles[i]]),
+                            localToWorld.MultiplyPoint3x4(meshVertices[meshTriangles[i + 1]]),
+                            localToWorld.MultiplyPoint3x4(meshVertices[meshTriangles[i + 2]]),
+                            
                             filter.transform.rotation * meshNormals[meshTriangles[i]]
                         );
 

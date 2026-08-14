@@ -28,6 +28,11 @@ public class Cell
     public int X = -1;
     public int Z = -1;
 
+    public void Reset() 
+    {
+        spans.Clear();
+    }
+
     public void AddSpan(int min, int max, AreaID area, int flagMergeThreshold)
     {
         Span newSpan = new Span(min, max, area);
@@ -118,6 +123,7 @@ public class HeightField : MonoBehaviour
 
     public void Update()
     {
+        // TODO: dirty flag system
         CreateHeightField();
     }
 
@@ -177,23 +183,36 @@ public class HeightField : MonoBehaviour
     #region Rasterization functions
     private void CreateHeightField()
     {
-        minBounds = boxCollider.bounds.min;
-        maxBounds = boxCollider.bounds.max;
+        Bounds colliderBounds = boxCollider.bounds;
+        minBounds = colliderBounds.min;
+        maxBounds = colliderBounds.max;
+        Vector3 size = boxCollider.size;
         inverseCellSize = 1f / cellSize;
         inverseCellHeight = 1f / cellHeight;
-        cellCountX = Mathf.FloorToInt(boxCollider.size.x * inverseCellSize);
-        cellCountZ = Mathf.FloorToInt(boxCollider.size.z * inverseCellSize);
+        cellCountX = Mathf.FloorToInt(size.x * inverseCellSize);
+        cellCountZ = Mathf.FloorToInt(size.z * inverseCellSize);
         cellCount = cellCountX * cellCountZ;
-        cellCountY = Mathf.FloorToInt(boxCollider.size.y * inverseCellHeight);
+        cellCountY = Mathf.FloorToInt(size.y * inverseCellHeight);
         walkableClimbSpans = Mathf.CeilToInt(walkableClimb * inverseCellHeight);
         walkableHeightSpans = Mathf.CeilToInt(walkableHeight * inverseCellHeight);
 
         System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
         sw.Start();
-        cells.Clear();
-        for (int i = 0; i < cellCount; ++i)
+        if (cells == null || cells.Count != cellCount)
         {
-            cells.Add(new Cell(i % cellCountX, i / cellCountX));
+            cells.Clear();
+            cells.Capacity = cellCount;
+            for (int i = 0; i < cellCount; ++i)
+            {
+                cells.Add(new Cell(i % cellCountX, i / cellCountX));
+            }
+        }
+        else 
+        {
+            for (int i = 0; i < cellCount; ++i) 
+            {
+                cells[i].Reset();   
+            }
         }
 
         if (geometryGetter)
@@ -201,10 +220,9 @@ public class HeightField : MonoBehaviour
             geometryGetter.GetGeometry();
             if (geometryGetter.Triangles.Count > 0)
             {
-                
-                for(int i = 0; i < geometryGetter.Triangles.Count; ++i)
+                for (int i = 0; i < geometryGetter.Triangles.Count; ++i)
                 {
-                    RasterizeTriangle(geometryGetter.Triangles[i].vertices[0], geometryGetter.Triangles[i].vertices[1], geometryGetter.Triangles[i].vertices[2], geometryGetter.Triangles[i].areaID);
+                    RasterizeTriangle(geometryGetter.Triangles[i].point1, geometryGetter.Triangles[i].point2, geometryGetter.Triangles[i].point3, geometryGetter.Triangles[i].areaID);
                 }
                 sw.Stop();
                 Debug.Log("\nExecution time:  " + sw.Elapsed.TotalMilliseconds + "ms");
@@ -233,33 +251,33 @@ public class HeightField : MonoBehaviour
     private void MapToGrid(Vector3 triMinAABB, Vector3 triMaxAABB, ref int x0, ref int x1, ref int z0, ref int z1)
     {
         // Calculate the footprint of the triangle on the grid's x-axis
-        x0 = (int)((triMinAABB[0] - minBounds[0]) * inverseCellSize);
-        x1 = (int)((triMaxAABB[0] - minBounds[0]) * inverseCellSize);
+        x0 = Mathf.FloorToInt((triMinAABB.x - minBounds.x) * inverseCellSize);
+        x1 = Mathf.FloorToInt((triMaxAABB.x - minBounds.x) * inverseCellSize);
 
         x0 = Math.Clamp(x0, 0, cellCountX - 1);
         x1 = Math.Clamp(x1, 0, cellCountX - 1);
 
         // Calculate the footprint of the triangle on the grid's z-axis
-        z0 = (int)((triMinAABB[2] - minBounds[2]) * inverseCellSize);
-        z1 = (int)((triMaxAABB[2] - minBounds[2]) * inverseCellSize);
+        z0 = Mathf.FloorToInt((triMinAABB.z - minBounds.z) * inverseCellSize);
+        z1 = Mathf.FloorToInt((triMaxAABB.z - minBounds.z) * inverseCellSize);
 
         z0 = Math.Clamp(z0, 0, cellCountZ - 1);
         z1 = Math.Clamp(z1, 0, cellCountZ - 1);
     }
     
-    private Vector3 ComputeIntersection(Vector3 point1, Vector3 point2, Vector3 point3, Vector3 axisNormal)
+    private Vector3 ComputeIntersection(Vector3 point1, Vector3 point2, float offset, int axis)
     {
         Vector3 V = point2 - point1;
-        float t = Vector3.Dot(point3 - point1, axisNormal) / Vector3.Dot(V, axisNormal);
+        float t = (offset - point1[axis]) / V[axis];
         return point1 + t * V;
     }
 
-    private int ProcessSegment(Vector3 axisNormal, Vector3 cellPos, Vector3 point1, Vector3 point2, Span<Vector3> points)
+    private int ProcessSegment(Span<float> deltas, float offset, int axis, int pointIndex, Vector3 point1, Vector3 point2, Span<Vector3> points)
     {
         int pointsCount = 0;
 
-        float D1 = Vector3.Dot(axisNormal, point1 - cellPos);
-        float D2 = Vector3.Dot(axisNormal, point2 - cellPos);
+        float D1 = deltas[pointIndex];
+        float D2 = deltas[pointIndex + 1 == deltas.Length ? 0 : pointIndex + 1];
 
         if (D1 > 0f)
         {
@@ -270,27 +288,32 @@ public class HeightField : MonoBehaviour
             }
             else
             {
-                points[1] = ComputeIntersection(point1, point2, cellPos, axisNormal);
+                points[1] = ComputeIntersection(point1, point2, offset, axis);
                 pointsCount = 2;
             }
 
         }
         else if (D2 > 0f)
         {
-            points[0] = ComputeIntersection(point1, point2, cellPos, axisNormal);
+            points[0] = ComputeIntersection(point1, point2, offset, axis);
             pointsCount = 1;
         }
 
         return pointsCount;
     }
 
-    private int ClipPoly(Vector3 axisNormal, Vector3 cellPos, Span<Vector3> segmentPoints, Span<Vector3> inputPolygon, int verticesCount, Span<Vector3> outputPolygon)
+    private int ClipPoly(float sign, int axis, float offset, Span<Vector3> segmentPoints, Span<Vector3> inputPolygon, int verticesCount, Span<Vector3> outputPolygon)
     {
         int pointsCount = 0;
-         
+        Span<float> verticesAxisDelta = stackalloc float[verticesCount];
+        for(int i = 0; i < verticesCount; ++i) 
+        {
+            verticesAxisDelta[i] = sign * (inputPolygon[i][axis] - offset);
+        }
+
         for (int i = 0; i < verticesCount; ++i)
         {
-            int count = ProcessSegment(axisNormal, cellPos, inputPolygon[i], inputPolygon[i + 1 == verticesCount ? 0 : i + 1], segmentPoints);
+            int count = ProcessSegment(verticesAxisDelta, offset, axis, i, inputPolygon[i], inputPolygon[i + 1 == verticesCount ? 0 : i + 1], segmentPoints);
             if(count >= 1) 
                outputPolygon[pointsCount++] = segmentPoints[0];
             if(count == 2) 
@@ -331,16 +354,16 @@ public class HeightField : MonoBehaviour
             cellPos.x = cellSize * x0 + minBounds.x;
 
             // Clip to row
-            int rowCount = ClipPoly(Vector3.forward, cellPos, segmentPoints, bufferA, 3, bufferB);
-            rowCount = ClipPoly(-Vector3.forward, cellPos + Vector3.forward * cellSize, segmentPoints, bufferB, rowCount, polygon);
+            int rowCount = ClipPoly(1f, 2, cellPos.z, segmentPoints, bufferA, 3, bufferB);
+            rowCount = ClipPoly(-1f, 2, cellPos.z + cellSize, segmentPoints, bufferB, rowCount, polygon);
 
             for (int x = x0; x <= x1; ++x)
             {
                 cellPos.x = cellSize * x + minBounds.x;
 
                 // Clip to column
-                int columnCount = ClipPoly(Vector3.right, cellPos, segmentPoints, polygon, rowCount, bufferA);
-                columnCount = ClipPoly(-Vector3.right, cellPos + Vector3.right * cellSize, segmentPoints, bufferA, columnCount, bufferB);
+                int columnCount = ClipPoly(1f, 0, cellPos.x, segmentPoints, polygon, rowCount, bufferA);
+                columnCount = ClipPoly(-1f, 0, cellPos.x + cellSize, segmentPoints, bufferA, columnCount, bufferB);
 
                 if (columnCount < 3)
                     continue;
