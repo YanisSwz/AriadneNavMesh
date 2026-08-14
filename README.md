@@ -139,6 +139,8 @@ Lot of room for optimization. As we can see, the current bottleneck is triangle 
 
 After a first basic pass (math simplifications) on Voxelization: ~160ms - 190ms
 
+After a second pass on memory allocations, moving the load from heap to stack using C# Spans instead of Lists: ~54 - 74ms
+
 ## Result
 
 The full pipeline at the moment: 

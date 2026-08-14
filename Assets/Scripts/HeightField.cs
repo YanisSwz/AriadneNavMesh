@@ -249,45 +249,55 @@ public class HeightField : MonoBehaviour
     
     private Vector3 ComputeIntersection(Vector3 point1, Vector3 point2, Vector3 point3, Vector3 axisNormal)
     {
-        Vector3 N = axisNormal;
         Vector3 V = point2 - point1;
-        float t = Vector3.Dot(point3 - point1, N) / Vector3.Dot(V, N);
+        float t = Vector3.Dot(point3 - point1, axisNormal) / Vector3.Dot(V, axisNormal);
         return point1 + t * V;
     }
 
-    private List<Vector3> ProcessSegment(Vector3 axisNormal, Vector3 cellPos, Vector3 point1, Vector3 point2)
+    private int ProcessSegment(Vector3 axisNormal, Vector3 cellPos, Vector3 point1, Vector3 point2, Span<Vector3> points)
     {
-        List<Vector3> points = new List<Vector3>();
+        int pointsCount = 0;
 
         float D1 = Vector3.Dot(axisNormal, point1 - cellPos);
         float D2 = Vector3.Dot(axisNormal, point2 - cellPos);
 
         if (D1 > 0f)
         {
-            points.Add(point1);
+            points[0] = point1;
             if (D2 > 0f)
-                points.Add(point2);
+            {
+                pointsCount = 1;
+            }
             else
-                points.Add(ComputeIntersection(point1, point2, cellPos, axisNormal));
+            {
+                points[1] = ComputeIntersection(point1, point2, cellPos, axisNormal);
+                pointsCount = 2;
+            }
+
         }
         else if (D2 > 0f)
         {
-            points.Add(ComputeIntersection(point1, point2, cellPos, axisNormal));
-            points.Add(point2);
+            points[0] = ComputeIntersection(point1, point2, cellPos, axisNormal);
+            pointsCount = 1;
         }
 
-        return points;
+        return pointsCount;
     }
 
-    private List<Vector3> ClipPoly(Vector3 axisNormal, Vector3 cellPos, List<Vector3> vertices)
+    private int ClipPoly(Vector3 axisNormal, Vector3 cellPos, Span<Vector3> segmentPoints, Span<Vector3> inputPolygon, int verticesCount, Span<Vector3> outputPolygon)
     {
-        List<Vector3> points = new List<Vector3>();
-        for (int i = 0; i < vertices.Count; ++i)
+        int pointsCount = 0;
+         
+        for (int i = 0; i < verticesCount; ++i)
         {
-            points.AddRange(ProcessSegment(axisNormal, cellPos, vertices[i], vertices[(i + 1) % vertices.Count]));
+            int count = ProcessSegment(axisNormal, cellPos, inputPolygon[i], inputPolygon[i + 1 == verticesCount ? 0 : i + 1], segmentPoints);
+            if(count >= 1) 
+               outputPolygon[pointsCount++] = segmentPoints[0];
+            if(count == 2) 
+               outputPolygon[pointsCount++] = segmentPoints[1];
         }
 
-        return points;
+        return pointsCount;
     }
 
     private void RasterizeTriangle(Vector3 point1, Vector3 point2, Vector3 point3, AreaID triAreaID)
@@ -305,36 +315,46 @@ public class HeightField : MonoBehaviour
 
         MapToGrid(triMinAABB, triMaxAABB, ref x0, ref x1, ref z0, ref z1);
 
+        Span<Vector3> polygon = stackalloc Vector3[12];
+        Span<Vector3> bufferA = stackalloc Vector3[12];
+        Span<Vector3> bufferB = stackalloc Vector3[12];
+        Span<Vector3> segmentPoints = stackalloc Vector3[2];
+        Vector3 cellPos = Vector3.zero;
+
         for (int z = z0; z <= z1; ++z)
         {
-            List<Vector3> polygonPoints = new List<Vector3>() { point1, point2, point3 };
+            bufferA[0] = point1;
+            bufferA[1] = point2;
+            bufferA[2] = point3;
 
-            Vector3 cellPos = new Vector3(cellSize * x0, 0f, cellSize * z) + minBounds;
+            cellPos.z = cellSize * z + minBounds.z;
+            cellPos.x = cellSize * x0 + minBounds.x;
+
             // Clip to row
-            polygonPoints = ClipPoly(Vector3.forward, cellPos, polygonPoints);
-            polygonPoints = ClipPoly(-Vector3.forward, cellPos + Vector3.forward * cellSize, polygonPoints);
+            int rowCount = ClipPoly(Vector3.forward, cellPos, segmentPoints, bufferA, 3, bufferB);
+            rowCount = ClipPoly(-Vector3.forward, cellPos + Vector3.forward * cellSize, segmentPoints, bufferB, rowCount, polygon);
 
             for (int x = x0; x <= x1; ++x)
             {
-                cellPos = new Vector3(cellSize * x, 0f, cellSize * z) + minBounds;
+                cellPos.x = cellSize * x + minBounds.x;
 
                 // Clip to column
-                List<Vector3> clippedPoly = ClipPoly(Vector3.right, cellPos, polygonPoints);
-                clippedPoly = ClipPoly(-Vector3.right, cellPos + Vector3.right * cellSize, clippedPoly);
+                int columnCount = ClipPoly(Vector3.right, cellPos, segmentPoints, polygon, rowCount, bufferA);
+                columnCount = ClipPoly(-Vector3.right, cellPos + Vector3.right * cellSize, segmentPoints, bufferA, columnCount, bufferB);
 
-                if (clippedPoly.Count < 3)
+                if (columnCount < 3)
                     continue;
 
                 // Add spans
                 float minHeight = Mathf.Infinity;
                 float maxHeight = -Mathf.Infinity;
 
-                for (int i = 0; i < clippedPoly.Count; ++i)
+                for (int i = 0; i < columnCount; ++i)
                 {
-                    if (clippedPoly[i].y < minHeight)
-                        minHeight = clippedPoly[i].y;
-                    if (clippedPoly[i].y > maxHeight)
-                        maxHeight = clippedPoly[i].y;
+                    if (bufferB[i].y < minHeight)
+                        minHeight = bufferB[i].y;
+                    if (bufferB[i].y > maxHeight)
+                        maxHeight = bufferB[i].y;
                 }
 
                 minHeight -= minBounds[1];
