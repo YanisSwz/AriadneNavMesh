@@ -28,7 +28,7 @@ public class Cell
     public int X = -1;
     public int Z = -1;
 
-    public void Reset() 
+    public void Reset()
     {
         spans.Clear();
     }
@@ -196,8 +196,7 @@ public class HeightField : MonoBehaviour
         walkableClimbSpans = Mathf.CeilToInt(walkableClimb * inverseCellHeight);
         walkableHeightSpans = Mathf.CeilToInt(walkableHeight * inverseCellHeight);
 
-        System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
-        sw.Start();
+        
         if (cells == null || cells.Count != cellCount)
         {
             cells.Clear();
@@ -207,11 +206,11 @@ public class HeightField : MonoBehaviour
                 cells.Add(new Cell(i % cellCountX, i / cellCountX));
             }
         }
-        else 
+        else
         {
-            for (int i = 0; i < cellCount; ++i) 
+            for (int i = 0; i < cellCount; ++i)
             {
-                cells[i].Reset();   
+                cells[i].Reset();
             }
         }
 
@@ -224,15 +223,17 @@ public class HeightField : MonoBehaviour
                 {
                     RasterizeTriangle(geometryGetter.Triangles[i].point1, geometryGetter.Triangles[i].point2, geometryGetter.Triangles[i].point3, geometryGetter.Triangles[i].areaID);
                 }
-                sw.Stop();
-                Debug.Log("\nExecution time:  " + sw.Elapsed.TotalMilliseconds + "ms");
 
+                System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
+                sw.Start();
                 if (filterLowHanging)
                     FilterLowHangingObstacles();
                 if (filterLedges)
                     FilterLedgeSpans();
                 if (filterLowHeight)
                     FilterLowHeightSpans();
+                sw.Stop();
+                Debug.Log("\nExecution time:  " + sw.Elapsed.TotalMilliseconds + "ms");
             }
         }
     }
@@ -264,7 +265,7 @@ public class HeightField : MonoBehaviour
         z0 = Math.Clamp(z0, 0, cellCountZ - 1);
         z1 = Math.Clamp(z1, 0, cellCountZ - 1);
     }
-    
+
     private Vector3 ComputeIntersection(Vector3 point1, Vector3 point2, float offset, int axis)
     {
         Vector3 V = point2 - point1;
@@ -272,52 +273,74 @@ public class HeightField : MonoBehaviour
         return point1 + t * V;
     }
 
-    private int ProcessSegment(Span<float> deltas, float offset, int axis, int pointIndex, Vector3 point1, Vector3 point2, Span<Vector3> points)
+    private int ProcessSegment(Span<float> deltas, float offset, int axis, int pointIndex, Vector3 point1, Vector3 point2, Span<Vector3> insidePoints, Span<Vector3> outPoints, out int outPointsCount)
     {
         int pointsCount = 0;
+        outPointsCount = 0;
 
         float D1 = deltas[pointIndex];
         float D2 = deltas[pointIndex + 1 == deltas.Length ? 0 : pointIndex + 1];
 
         if (D1 > 0f)
         {
-            points[0] = point1;
+            insidePoints[0] = point1;
             if (D2 > 0f)
             {
                 pointsCount = 1;
             }
             else
             {
-                points[1] = ComputeIntersection(point1, point2, offset, axis);
+                Vector3 interSectionPoint = ComputeIntersection(point1, point2, offset, axis);
+                insidePoints[1] = interSectionPoint;
                 pointsCount = 2;
+
+                outPoints[0] = interSectionPoint;
+                outPointsCount = 1;
             }
 
         }
         else if (D2 > 0f)
         {
-            points[0] = ComputeIntersection(point1, point2, offset, axis);
+            Vector3 interSectionPoint = ComputeIntersection(point1, point2, offset, axis);
+            insidePoints[0] = interSectionPoint;
             pointsCount = 1;
+
+            outPoints[0] = point1;
+            outPoints[1] = interSectionPoint;
+            outPointsCount = 2;
+        }
+        else
+        {
+            outPoints[0] = point1;
+            outPointsCount = 1;
         }
 
         return pointsCount;
     }
 
-    private int ClipPoly(float sign, int axis, float offset, Span<Vector3> segmentPoints, Span<Vector3> inputPolygon, int verticesCount, Span<Vector3> outputPolygon)
+    private int ClipPoly(int axis, float offset, Span<Vector3> segmentPoints, Span<Vector3> outSegmentPoints, Span<Vector3> inputPolygon, int verticesCount, Span<Vector3> inOutputPolygon, Span<Vector3> outOutputPolygon, out int outVerticesCount)
     {
         int pointsCount = 0;
+        outVerticesCount = 0;
         Span<float> verticesAxisDelta = stackalloc float[verticesCount];
-        for(int i = 0; i < verticesCount; ++i) 
+        for (int i = 0; i < verticesCount; ++i)
         {
-            verticesAxisDelta[i] = sign * (inputPolygon[i][axis] - offset);
+            verticesAxisDelta[i] = offset - inputPolygon[i][axis];
         }
 
         for (int i = 0; i < verticesCount; ++i)
         {
-            int count = ProcessSegment(verticesAxisDelta, offset, axis, i, inputPolygon[i], inputPolygon[i + 1 == verticesCount ? 0 : i + 1], segmentPoints);
-            if(count >= 1) 
-               outputPolygon[pointsCount++] = segmentPoints[0];
-            if(count == 2) 
-               outputPolygon[pointsCount++] = segmentPoints[1];
+            int outCount = 0;
+            int count = ProcessSegment(verticesAxisDelta, offset, axis, i, inputPolygon[i], inputPolygon[i + 1 == verticesCount ? 0 : i + 1], segmentPoints, outSegmentPoints, out outCount);
+            if (count >= 1)
+                inOutputPolygon[pointsCount++] = segmentPoints[0];
+            if (count == 2)
+                inOutputPolygon[pointsCount++] = segmentPoints[1];
+
+            if (outCount >= 1)
+                outOutputPolygon[outVerticesCount++] = outSegmentPoints[0];
+            if (outCount == 2)
+                outOutputPolygon[outVerticesCount++] = outSegmentPoints[1];
         }
 
         return pointsCount;
@@ -341,43 +364,59 @@ public class HeightField : MonoBehaviour
         Span<Vector3> polygon = stackalloc Vector3[12];
         Span<Vector3> bufferA = stackalloc Vector3[12];
         Span<Vector3> bufferB = stackalloc Vector3[12];
+        Span<Vector3> bufferC = stackalloc Vector3[12];
+        Span<Vector3> bufferD = stackalloc Vector3[12];
         Span<Vector3> segmentPoints = stackalloc Vector3[2];
+        Span<Vector3> outSegmentPoints = stackalloc Vector3[2];
         Vector3 cellPos = Vector3.zero;
+
+        bufferA[0] = point1;
+        bufferA[1] = point2;
+        bufferA[2] = point3;
+        int rowCount = 3;
 
         for (int z = z0; z <= z1; ++z)
         {
-            bufferA[0] = point1;
-            bufferA[1] = point2;
-            bufferA[2] = point3;
-
             cellPos.z = cellSize * z + minBounds.z;
             cellPos.x = cellSize * x0 + minBounds.x;
 
             // Clip to row
-            int rowCount = ClipPoly(1f, 2, cellPos.z, segmentPoints, bufferA, 3, bufferB);
-            rowCount = ClipPoly(-1f, 2, cellPos.z + cellSize, segmentPoints, bufferB, rowCount, polygon);
+            int outRowCount = 0;
+            rowCount = ClipPoly(2, cellPos.z + cellSize, segmentPoints, outSegmentPoints, bufferA, rowCount, bufferB, bufferC, out outRowCount);
 
+            bufferA = bufferC;
+            int currentRowCount = rowCount;
+            rowCount = outRowCount;
+
+            if(currentRowCount < 3)
+                continue;
+
+            int columnCount = currentRowCount;
             for (int x = x0; x <= x1; ++x)
             {
                 cellPos.x = cellSize * x + minBounds.x;
 
                 // Clip to column
-                int columnCount = ClipPoly(1f, 0, cellPos.x, segmentPoints, polygon, rowCount, bufferA);
-                columnCount = ClipPoly(-1f, 0, cellPos.x + cellSize, segmentPoints, bufferA, columnCount, bufferB);
+                int outColumnCount = 0;
+                columnCount = ClipPoly(0, cellPos.x + cellSize, segmentPoints, outSegmentPoints, bufferB, columnCount, polygon, bufferD, out outColumnCount);
 
-                if (columnCount < 3)
+                bufferB = bufferD;
+                int cellCount = columnCount;
+                columnCount = outColumnCount;
+
+                if (cellCount < 3)
                     continue;
 
                 // Add spans
                 float minHeight = Mathf.Infinity;
                 float maxHeight = -Mathf.Infinity;
 
-                for (int i = 0; i < columnCount; ++i)
+                for (int i = 0; i < cellCount; ++i)
                 {
-                    if (bufferB[i].y < minHeight)
-                        minHeight = bufferB[i].y;
-                    if (bufferB[i].y > maxHeight)
-                        maxHeight = bufferB[i].y;
+                    if (polygon[i].y < minHeight)
+                        minHeight = polygon[i].y;
+                    if (polygon[i].y > maxHeight)
+                        maxHeight = polygon[i].y;
                 }
 
                 minHeight -= minBounds[1];
@@ -408,16 +447,16 @@ public class HeightField : MonoBehaviour
     #region Filter functions
     private void FilterLowHangingObstacles()
     {
-        for(int i = 0; i < cellCount; ++i) 
+        for (int i = 0; i < cellCount; ++i)
         {
             Span previousSpan = null;
             bool previousWalkable = false;
             AreaID previousAreadID = AreaID.NULL;
 
-            foreach(Span span in cells[i].spans) 
+            foreach (Span span in cells[i].spans)
             {
                 bool walkable = span.area != AreaID.NULL;
-                if(!walkable && previousWalkable && span.max - previousSpan.max <= walkableClimbSpans)
+                if (!walkable && previousWalkable && span.max - previousSpan.max <= walkableClimbSpans)
                 {
                     span.area = previousAreadID;
                 }
@@ -429,7 +468,7 @@ public class HeightField : MonoBehaviour
         }
     }
 
-    private void FilterLedgeSpans() 
+    private void FilterLedgeSpans()
     {
         for (int z = 0; z < cellCountZ; ++z)
         {
@@ -454,7 +493,7 @@ public class HeightField : MonoBehaviour
                         int neighbourX = x + GetNeighbourX(direction);
                         int neighbourZ = z + GetNeighbourZ(direction);
 
-                        if(neighbourX < 0 || neighbourZ < 0 || neighbourX >= cellCountX || neighbourZ >= cellCountZ) 
+                        if (neighbourX < 0 || neighbourZ < 0 || neighbourX >= cellCountX || neighbourZ >= cellCountZ)
                         {
                             lowestNeighbourFloorDifference = -walkableClimbSpans - 1;
                             break;
@@ -469,11 +508,11 @@ public class HeightField : MonoBehaviour
                             break;
                         }
 
-                        for (int k = 0; k < cells[neighbourX + neighbourZ * cellCountX].spans.Count; ++k) 
+                        for (int k = 0; k < cells[neighbourX + neighbourZ * cellCountX].spans.Count; ++k)
                         {
                             neighbourSpan = cells[neighbourX + neighbourZ * cellCountX].spans[k];
                             int neighbourFloor = neighbourSpan.max;
-                            neighbourCeiling = k + 1 < cells[neighbourX + neighbourZ * cellCountX].spans.Count ? cells[neighbourX + neighbourZ * cellCountX].spans[k+1].min : int.MaxValue;
+                            neighbourCeiling = k + 1 < cells[neighbourX + neighbourZ * cellCountX].spans.Count ? cells[neighbourX + neighbourZ * cellCountX].spans[k + 1].min : int.MaxValue;
 
                             if (Math.Min(ceiling, neighbourCeiling) - Math.Max(floor, neighbourFloor) < walkableHeightSpans)
                             {
@@ -488,27 +527,27 @@ public class HeightField : MonoBehaviour
                                 lowestTraversableNeighbourFloor = Math.Min(lowestTraversableNeighbourFloor, neighbourFloor);
                                 highestTraversableNeighbourFloor = Math.Max(highestTraversableNeighbourFloor, neighbourFloor);
                             }
-                            else if(neighbourFloorDifference < -walkableClimbSpans) 
+                            else if (neighbourFloorDifference < -walkableClimbSpans)
                             {
                                 break;
                             }
                         }
                     }
 
-                    if(lowestNeighbourFloorDifference < -walkableClimbSpans) 
+                    if (lowestNeighbourFloorDifference < -walkableClimbSpans)
                     {
                         span.area = AreaID.NULL;
                     }
-                    else if(highestTraversableNeighbourFloor - lowestTraversableNeighbourFloor > walkableClimbSpans)
-                    {  
-                        span.area = AreaID.NULL; 
+                    else if (highestTraversableNeighbourFloor - lowestTraversableNeighbourFloor > walkableClimbSpans)
+                    {
+                        span.area = AreaID.NULL;
                     }
                 }
             }
         }
     }
 
-    private int GetNeighbourX(int index) 
+    private int GetNeighbourX(int index)
     {
         int[] offset = { -1, 0, 1, 0 };
         return offset[index];
@@ -520,16 +559,16 @@ public class HeightField : MonoBehaviour
         return offset[index];
     }
 
-    private void FilterLowHeightSpans() 
+    private void FilterLowHeightSpans()
     {
-        for(int i = 0; i < cellCount; ++i) 
+        for (int i = 0; i < cellCount; ++i)
         {
-            for(int j = 0; j < cells[i].spans.Count; ++j) 
+            for (int j = 0; j < cells[i].spans.Count; ++j)
             {
                 int floor = cells[i].spans[j].max;
                 int ceiling = j + 1 < cells[i].spans.Count ? cells[i].spans[j + 1].min : int.MaxValue;
-            
-                if(ceiling - floor < walkableHeightSpans)
+
+                if (ceiling - floor < walkableHeightSpans)
                 {
                     cells[i].spans[j].area = AreaID.NULL;
                 }

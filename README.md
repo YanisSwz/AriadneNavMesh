@@ -131,18 +131,29 @@ The last one is used to tag as unwalkable spans which don't have enough headspac
 ![Final scene](./Visuals/FinalResult.png)
 
 Benchmark for this scene, which has 2 000 vertices and 900 triangles fed into an heightfield of 36 000 cells with cell size = 0.1 and cell height = 0.025:
+
+### Before
 - Geometry input: ~0.75ms - 0.80ms
 - Voxelization: ~210ms - 245ms
 - Walkable filtering: ~8ms - 10ms
 
-Lot of room for optimization. As we can see, the current bottleneck is triangle voxelization.
+Lot of room for optimization. As we can see, the bottleneck is triangle voxelization.
 
-After a first basic pass (math simplifications) on Voxelization: ~160ms - 190ms
+### After 
+- Geometry input: ~0.75ms - 0.80ms
+- Voxelization: ~18ms (12x faster, -91%)
+- Walkable filtering: ~8ms - 10ms
 
-After a second pass on memory allocations, moving the load from heap to stack using C# Spans instead of Lists: ~54ms - 74ms
+### Voxelization
 
-After a third pass aimed at maths (removing dot products thanks to X-Z scalar comparisons):
+1) After a basic pass (math simplifications): ~160ms - 190ms
+
+2) After a pass on memory allocations, moving the load from heap to stack using C# Spans instead of Lists: ~54ms - 74ms
+
+3) After a pass aimed at maths (removing dot products thanks to X-Z scalar comparisons):
 ~25ms - 35ms
+
+4) After a final pass aimed at structure, reducing clipping work by two by reusing previous clipped polygon for the next row/cell: ~18ms
 
 ## Result
 
