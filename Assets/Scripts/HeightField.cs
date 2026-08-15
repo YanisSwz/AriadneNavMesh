@@ -33,6 +33,7 @@ public class Cell
         spans.Clear();
     }
 
+    // TODO: change
     public void AddSpan(int min, int max, AreaID area, int flagMergeThreshold)
     {
         Span newSpan = new Span(min, max, area);
@@ -115,6 +116,7 @@ public class HeightField : MonoBehaviour
     private int walkableHeightSpans = 0;
     private float inverseCellSize = 1f;
     private float inverseCellHeight = 1f;
+    private float clipEpsilon = 1e-5f;
 
     private static readonly int[] NeighbourX = { -1, 0, 1, 0 };
     private static readonly int[] NeighbourZ = { 0, 1, 0, -1 };
@@ -186,8 +188,7 @@ public class HeightField : MonoBehaviour
     #region Rasterization functions
     private void CreateHeightField()
     {
-        System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
-        sw.Start();
+        
         Bounds colliderBounds = boxCollider.bounds;
         minBounds = colliderBounds.min;
         maxBounds = colliderBounds.max;
@@ -200,7 +201,10 @@ public class HeightField : MonoBehaviour
         cellCountY = Mathf.FloorToInt(size.y * inverseCellHeight);
         walkableClimbSpans = Mathf.CeilToInt(walkableClimb * inverseCellHeight);
         walkableHeightSpans = Mathf.CeilToInt(walkableHeight * inverseCellHeight);
+        clipEpsilon = cellSize * 1e-4f;
         
+        System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
+        sw.Start();
         if (cells == null || cells.Count != cellCount)
         {
             cells.Clear();
@@ -223,12 +227,14 @@ public class HeightField : MonoBehaviour
             geometryGetter.GetGeometry();
             if (geometryGetter.Triangles.Count > 0)
             {
+                
                 for (int i = 0; i < geometryGetter.Triangles.Count; ++i)
                 {
                     RasterizeTriangle(geometryGetter.Triangles[i].point1, geometryGetter.Triangles[i].point2, geometryGetter.Triangles[i].point3, geometryGetter.Triangles[i].areaID);
                 }
+                sw.Stop();
+                Debug.Log("\nExecution time:  " + sw.Elapsed.TotalMilliseconds + "ms");
 
-               
                 if (filterLowHanging)
                     FilterLowHangingObstacles();
                 if (filterLedges)
@@ -238,8 +244,7 @@ public class HeightField : MonoBehaviour
                
             }
         }
-        sw.Stop();
-        Debug.Log("\nExecution time:  " + sw.Elapsed.TotalMilliseconds + "ms");
+        
     }
 
     private void GetBoundingBox(Vector3 point1, Vector3 point2, Vector3 point3, ref Vector3 triMinAABB, ref Vector3 triMaxAABB)
@@ -285,10 +290,10 @@ public class HeightField : MonoBehaviour
         float D1 = deltas[pointIndex];
         float D2 = deltas[pointIndex + 1 == deltas.Length ? 0 : pointIndex + 1];
 
-        if (D1 > 0f)
+        if (D1 > -clipEpsilon)
         {
             insidePoints[0] = point1;
-            if (D2 > 0f)
+            if (D2 > -clipEpsilon)
             {
                 pointsCount = 1;
             }
@@ -303,7 +308,7 @@ public class HeightField : MonoBehaviour
             }
 
         }
-        else if (D2 > 0f)
+        else if (D2 > -clipEpsilon)
         {
             Vector3 interSectionPoint = ComputeIntersection(point1, point2, offset, axis);
             insidePoints[0] = interSectionPoint;
@@ -366,17 +371,20 @@ public class HeightField : MonoBehaviour
         MapToGrid(triMinAABB, triMaxAABB, ref x0, ref x1, ref z0, ref z1);
 
         Span<Vector3> polygon = stackalloc Vector3[12];
-        Span<Vector3> bufferA = stackalloc Vector3[12];
-        Span<Vector3> bufferB = stackalloc Vector3[12];
-        Span<Vector3> bufferC = stackalloc Vector3[12];
-        Span<Vector3> bufferD = stackalloc Vector3[12];
+        Span<Vector3> rowBufferA = stackalloc Vector3[12];
+        Span<Vector3> rowBufferB = stackalloc Vector3[12];
+        Span<Vector3> rowRemainderBuffer = stackalloc Vector3[12];
+        Span<Vector3> rowInput = rowBufferA;
+        Span<Vector3> rowRemainder = rowRemainderBuffer;
+        Span<Vector3> columnRemainderBuffer = stackalloc Vector3[12];
+
         Span<Vector3> segmentPoints = stackalloc Vector3[2];
         Span<Vector3> outSegmentPoints = stackalloc Vector3[2];
         Vector3 cellPos = Vector3.zero;
 
-        bufferA[0] = point1;
-        bufferA[1] = point2;
-        bufferA[2] = point3;
+        rowBufferA[0] = point1;
+        rowBufferA[1] = point2;
+        rowBufferA[2] = point3;
         int rowCount = 3;
 
         for (int z = z0; z <= z1; ++z)
@@ -386,15 +394,18 @@ public class HeightField : MonoBehaviour
 
             // Clip to row
             int outRowCount = 0;
-            rowCount = ClipPoly(2, cellPos.z + cellSize, segmentPoints, outSegmentPoints, bufferA, rowCount, bufferB, bufferC, out outRowCount);
+            int currentRowCount = ClipPoly(2, cellPos.z + cellSize, segmentPoints, outSegmentPoints, rowInput, rowCount, rowBufferB, rowRemainder, out outRowCount);
 
-            bufferA = bufferC;
-            int currentRowCount = rowCount;
+            Span<Vector3> temp = rowInput;
+            rowInput = rowRemainder;
+            rowRemainder = temp;
             rowCount = outRowCount;
 
             if(currentRowCount < 3)
                 continue;
 
+            Span<Vector3> columnInput = rowBufferB;
+            Span<Vector3> columnRemainder = columnRemainderBuffer;
             int columnCount = currentRowCount;
             for (int x = x0; x <= x1; ++x)
             {
@@ -402,10 +413,11 @@ public class HeightField : MonoBehaviour
 
                 // Clip to column
                 int outColumnCount = 0;
-                columnCount = ClipPoly(0, cellPos.x + cellSize, segmentPoints, outSegmentPoints, bufferB, columnCount, polygon, bufferD, out outColumnCount);
+                int cellCount = ClipPoly(0, cellPos.x + cellSize, segmentPoints, outSegmentPoints, columnInput, columnCount, polygon, columnRemainder, out outColumnCount);
 
-                bufferB = bufferD;
-                int cellCount = columnCount;
+                Span<Vector3> colTemp = columnInput;
+                columnInput = columnRemainder;
+                columnRemainder = colTemp;
                 columnCount = outColumnCount;
 
                 if (cellCount < 3)
