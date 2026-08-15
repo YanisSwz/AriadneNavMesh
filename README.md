@@ -137,12 +137,16 @@ Benchmark for this scene, which has 2 000 vertices and 900 triangles fed into an
 - Voxelization: ~210ms - 245ms
 - Walkable filtering: ~8ms - 10ms
 
+<b>Total: ~219ms - 256ms</b>
+
 Lot of room for optimization. As we can see, the bottleneck is triangle voxelization.
 
 ### After 
 - Geometry input: ~0.75ms - 0.80ms
 - Voxelization: ~18ms (12x faster, -91%)
-- Walkable filtering: ~8ms - 10ms
+- Walkable filtering: ~5ms (1.6x faster, -35%) 
+
+<b>Total: ~24ms</b>
 
 ### Voxelization
 
@@ -154,6 +158,10 @@ Lot of room for optimization. As we can see, the bottleneck is triangle voxeliza
 ~25ms - 35ms
 
 4) After a final pass aimed at structure, reducing clipping work by two by reusing previous clipped polygon for the next row/cell: ~18ms
+
+### Walkable filtering
+
+Did a pass on caching variables and removed useless allocations: ~5ms
 
 ## Result
 
