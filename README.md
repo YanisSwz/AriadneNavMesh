@@ -152,7 +152,7 @@ Lots of room for optimization. As we can see, the bottleneck is triangle voxeliz
 
 1) After a pass on simplifying math and Triangle struct (moving from List to 3 variables): ~0.4ms 
 
-2) After a pass focusedon hoisting: ~0.15ms
+2) After a pass focused on hoisting: ~0.15ms
 
 ### Voxelization
 
@@ -170,7 +170,7 @@ Lots of room for optimization. As we can see, the bottleneck is triangle voxeliz
 ### Walkable filtering
 
 1) After a pass on caching variables and removing useless allocations: ~5ms
-2) After a pass aimed at spans (AddSpan and moving from class to struct): ~4ms
+2) After a pass aimed at spans (AddSpan and moving from class to struct): ~3.5ms
 
 ## Result
 
