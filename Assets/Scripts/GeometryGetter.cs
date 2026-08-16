@@ -35,6 +35,7 @@ public class GeometryGetter : MonoBehaviour
     private List<Triangle> triangles = new List<Triangle>();
     public List<Triangle> Triangles { get { return triangles; } }
     private int verticesCount = 0;
+    public int VerticesCount {  get { return verticesCount; } }
 
     private void OnDrawGizmos()
     {

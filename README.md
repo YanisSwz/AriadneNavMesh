@@ -27,7 +27,7 @@ I then worked on mapping a single triangle to the heightfield's grid. It was pre
 I then worked on clipping the polygon to each cell of the grid using Sutherland-Hodgman clipping algorithm. We start by clipping the polygon by an axis. We iterate over each segments of the polygon and compare them to a side of the current cell (our axis):
 - if both points are inside of the cell, we save them both to the new polygon
 - if both points are outside, we save neither
-- if one of the point is inside and the other outsie, we save the one inside and we save the intersection point between the cell's side and the current segment.
+- if one of the point is inside and the other outside, we save the one inside and we save the intersection point between the cell's side and the current segment.
 
 ![One Axis clipping](./Visuals/OneAxisPolySave.gif)
 

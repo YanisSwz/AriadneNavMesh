@@ -41,7 +41,7 @@ public class Cell
         while (index < spans.Count)
         {
             Span currentSpan = spans[index];
-            
+
             if (currentSpan.min > newSpan.max)
             {
                 broke = true;
@@ -81,11 +81,11 @@ public class Cell
     }
 }
 
-[ExecuteInEditMode]
 [RequireComponent(typeof(BoxCollider))]
 public class HeightField : MonoBehaviour
 {
-    public GeometryGetter geometryGetter = null;
+    [SerializeField] private BoxCollider boxCollider = new BoxCollider();
+
     [Range(0.1f, 1f)]
     public float cellSize = 0.5f;
     [Range(0.025f, 1f)]
@@ -101,6 +101,8 @@ public class HeightField : MonoBehaviour
     [SerializeField] private Color boxColor = Color.white;
     [SerializeField] private Color heightColor = Color.white;
     [SerializeField] private Color gridColor = Color.white;
+    [SerializeField] private Color walkableColor = Color.green;
+    [SerializeField] private Color notWalkableColor = Color.red;
 
     public int cellCount = 10;
     public int cellCountX = 10;
@@ -109,7 +111,6 @@ public class HeightField : MonoBehaviour
 
     private Vector3 minBounds = Vector3.zero;
     private Vector3 maxBounds = Vector3.zero;
-    private BoxCollider boxCollider = new BoxCollider();
     private List<Cell> cells = new List<Cell>();
     private int walkableClimbSpans = 0;
     private int walkableHeightSpans = 0;
@@ -119,17 +120,6 @@ public class HeightField : MonoBehaviour
     private static readonly float CLIP_EPSILON = 1e-5f;
     private static readonly int[] NeighbourX = { -1, 0, 1, 0 };
     private static readonly int[] NeighbourZ = { 0, 1, 0, -1 };
-
-    public void Start()
-    {
-        boxCollider = GetComponent<BoxCollider>();
-    }
-
-    public void Update()
-    {
-        // TODO: dirty flag system
-        CreateHeightField();
-    }
 
     #region Draw functions
     public void OnDrawGizmos()
@@ -161,7 +151,7 @@ public class HeightField : MonoBehaviour
             foreach (Span span in cells[i].spans)
             {
                 Vector3 height = new Vector3(cellSize * (cells[i].X + 0.5f), cellHeight * ((span.max + span.min) / 2f), cellSize * (cells[i].Z + 0.5f)) + minBounds;
-                Gizmos.color = span.area == AreaID.WALKABLE ? Color.green : Color.red;
+                Gizmos.color = span.area == AreaID.WALKABLE ? walkableColor : notWalkableColor;
                 Gizmos.DrawCube(height, new Vector3(cellSize, (span.max - span.min) * cellHeight, cellSize));
             }
         }
@@ -185,10 +175,8 @@ public class HeightField : MonoBehaviour
     #endregion
 
     #region Rasterization functions
-    private void CreateHeightField()
+    public void CreateHeightField(List<Triangle> triangles)
     {
-        System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
-        sw.Start();
         Bounds colliderBounds = boxCollider.bounds;
         minBounds = colliderBounds.min;
         maxBounds = colliderBounds.max;
@@ -201,7 +189,7 @@ public class HeightField : MonoBehaviour
         cellCountY = Mathf.FloorToInt(size.y * inverseCellHeight);
         walkableClimbSpans = Mathf.CeilToInt(walkableClimb * inverseCellHeight);
         walkableHeightSpans = Mathf.CeilToInt(walkableHeight * inverseCellHeight);
-        
+
         if (cells == null || cells.Count != cellCount)
         {
             cells.Clear();
@@ -219,26 +207,17 @@ public class HeightField : MonoBehaviour
             }
         }
 
-        if (geometryGetter)
+        for (int i = 0; i < triangles.Count; ++i)
         {
-            geometryGetter.GetGeometry();
-            if (geometryGetter.Triangles.Count > 0)
-            {
-                for (int i = 0; i < geometryGetter.Triangles.Count; ++i)
-                {
-                    RasterizeTriangle(geometryGetter.Triangles[i].point1, geometryGetter.Triangles[i].point2, geometryGetter.Triangles[i].point3, geometryGetter.Triangles[i].areaID);
-                }
-
-                if (filterLowHanging)
-                    FilterLowHangingObstacles();
-                if (filterLedges)
-                    FilterLedgeSpans();
-                if (filterLowHeight)
-                    FilterLowHeightSpans();
-            }
+            RasterizeTriangle(triangles[i].point1, triangles[i].point2, triangles[i].point3, triangles[i].areaID);
         }
-        sw.Stop();
-        Debug.Log("\nExecution time:  " + sw.Elapsed.TotalMilliseconds + "ms");
+
+        if (filterLowHanging)
+            FilterLowHangingObstacles();
+        if (filterLedges)
+            FilterLedgeSpans();
+        if (filterLowHeight)
+            FilterLowHeightSpans();
     }
 
     private void GetBoundingBox(Vector3 point1, Vector3 point2, Vector3 point3, ref Vector3 triMinAABB, ref Vector3 triMaxAABB)
@@ -397,13 +376,13 @@ public class HeightField : MonoBehaviour
             rowRemainder = temp;
             rowCount = outRowCount;
 
-            if(currentRowCount < 3)
+            if (currentRowCount < 3)
                 continue;
 
             // Find the row's actual X extent
             float minX = rowBufferB[0].x;
             float maxX = rowBufferB[0].x;
-            for(int i = 1; i < currentRowCount; ++i) 
+            for (int i = 1; i < currentRowCount; ++i)
             {
                 if (rowBufferB[i].x < minX)
                     minX = rowBufferB[i].x;
@@ -482,7 +461,7 @@ public class HeightField : MonoBehaviour
             AreaID previousAreadID = AreaID.NULL;
             Cell currentCell = cells[i];
 
-            for(int j = 0; j< currentCell.spans.Count; ++j)
+            for (int j = 0; j < currentCell.spans.Count; ++j)
             {
                 Span currentSpan = currentCell.spans[j];
                 bool walkable = currentSpan.area != AreaID.NULL;
