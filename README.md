@@ -130,7 +130,7 @@ The last one is used to tag as unwalkable spans which don't have enough headspac
 
 ![Final scene](./Visuals/FinalResult.png)
 
-Benchmark for this scene, which has 2 000 vertices and 900 triangles fed into an heightfield of 36 000 cells with cell size = 0.1 and cell height = 0.025:
+Benchmark for this scene, which has 700 vertices and 900 triangles fed into an heightfield of 36 000 cells with cell size = 0.1 and cell height = 0.025:
 
 ### Before
 - Geometry input: ~0.75ms - 0.80ms
@@ -139,14 +139,20 @@ Benchmark for this scene, which has 2 000 vertices and 900 triangles fed into an
 
 <b>Total: ~219ms - 256ms</b>
 
-Lot of room for optimization. As we can see, the bottleneck is triangle voxelization.
+Lots of room for optimization. As we can see, the bottleneck is triangle voxelization.
 
 ### After 
-- Geometry input: ~0.75ms - 0.80ms
-- Voxelization: ~18ms (12x faster, -91%)
-- Walkable filtering: ~5ms (1.6x faster, -35%) 
+- Geometry input: ~0.15ms (5x faster, -80%)
+- Voxelization: ~11.5ms (18x faster, -94.5%)
+- Walkable filtering: ~3.5ms (2.2x faster, -55%) 
 
-<b>Total: ~24ms</b>
+<b>Total: ~15ms (14x faster, -93%)</b>
+
+### Geometry input
+
+1) After a pass on simplifying math and Triangle struct (moving from List to 3 variables): ~0.4ms 
+
+2) After a pass focusedon hoisting: ~0.15ms
 
 ### Voxelization
 
@@ -157,11 +163,14 @@ Lot of room for optimization. As we can see, the bottleneck is triangle voxeliza
 3) After a pass aimed at maths (removing dot products thanks to X-Z scalar comparisons):
 ~25ms - 35ms
 
-4) After a final pass aimed at structure, reducing clipping work by two by reusing previous clipped polygon for the next row/cell: ~18ms
+4) After a pass aimed at structure, reducing clipping work by two by reusing previous clipped polygon for the next row/cell: ~18ms
+
+5) After a pass aimed at spans (AddSpan and moving from class to struct) and ClipPolygon (skipped empty bounding box cells): ~11.5ms
 
 ### Walkable filtering
 
-Did a pass on caching variables and removed useless allocations: ~5ms
+1) After a pass on caching variables and removing useless allocations: ~5ms
+2) After a pass aimed at spans (AddSpan and moving from class to struct): ~4ms
 
 ## Result
 

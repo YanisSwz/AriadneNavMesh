@@ -81,17 +81,17 @@ public class GeometryGetter : MonoBehaviour
                 Vector3[] meshNormals = mesh.normals;
 
                 verticesCount += meshVertices.Length;
-
+                Matrix4x4 localToWorld = filter.transform.localToWorldMatrix;
+                Quaternion localToWorldRotation = filter.transform.rotation;
                 for (int i = 0; i < meshTriangles.Length; i+=3)
                 {
-                    Matrix4x4 localToWorld = filter.transform.localToWorldMatrix;
                     Triangle tri = new Triangle
                         (
                             localToWorld.MultiplyPoint3x4(meshVertices[meshTriangles[i]]),
                             localToWorld.MultiplyPoint3x4(meshVertices[meshTriangles[i + 1]]),
                             localToWorld.MultiplyPoint3x4(meshVertices[meshTriangles[i + 2]]),
                             
-                            filter.transform.rotation * meshNormals[meshTriangles[i]]
+                            localToWorldRotation * meshNormals[meshTriangles[i]]
                         );
 
                     tri.areaID = tri.normal.y > walkableThreshold ? AreaID.WALKABLE : AreaID.NULL;

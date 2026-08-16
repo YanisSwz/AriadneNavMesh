@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class Span
+public struct Span
 {
     public Span(int _min, int _max, AreaID _area)
     {
@@ -11,9 +11,9 @@ public class Span
         area = _area;
     }
 
-    public int min = -1;
-    public int max = -1;
-    public AreaID area = AreaID.NULL;
+    public int min;
+    public int max;
+    public AreaID area;
 }
 
 public class Cell
@@ -33,16 +33,15 @@ public class Cell
         spans.Clear();
     }
 
-    // TODO: change
     public void AddSpan(int min, int max, AreaID area, int flagMergeThreshold)
     {
         Span newSpan = new Span(min, max, area);
-        int index = -1;
+        int index = 0;
         bool broke = false;
-        List<Span> oldSpans = new(spans);
-        foreach (Span currentSpan in oldSpans)
+        while (index < spans.Count)
         {
-            ++index;
+            Span currentSpan = spans[index];
+            
             if (currentSpan.min > newSpan.max)
             {
                 broke = true;
@@ -51,6 +50,7 @@ public class Cell
 
             if (currentSpan.max < newSpan.min)
             {
+                ++index;
                 continue;
             }
             else
@@ -72,7 +72,6 @@ public class Cell
                     newSpan.max = currentSpan.max;
 
                 spans.RemoveAt(index);
-                --index;
             }
         }
         if (!broke)
@@ -116,8 +115,8 @@ public class HeightField : MonoBehaviour
     private int walkableHeightSpans = 0;
     private float inverseCellSize = 1f;
     private float inverseCellHeight = 1f;
-    private float clipEpsilon = 1e-5f;
 
+    private static readonly float CLIP_EPSILON = 1e-5f;
     private static readonly int[] NeighbourX = { -1, 0, 1, 0 };
     private static readonly int[] NeighbourZ = { 0, 1, 0, -1 };
 
@@ -188,7 +187,8 @@ public class HeightField : MonoBehaviour
     #region Rasterization functions
     private void CreateHeightField()
     {
-        
+        System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
+        sw.Start();
         Bounds colliderBounds = boxCollider.bounds;
         minBounds = colliderBounds.min;
         maxBounds = colliderBounds.max;
@@ -201,10 +201,7 @@ public class HeightField : MonoBehaviour
         cellCountY = Mathf.FloorToInt(size.y * inverseCellHeight);
         walkableClimbSpans = Mathf.CeilToInt(walkableClimb * inverseCellHeight);
         walkableHeightSpans = Mathf.CeilToInt(walkableHeight * inverseCellHeight);
-        clipEpsilon = cellSize * 1e-4f;
         
-        System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
-        sw.Start();
         if (cells == null || cells.Count != cellCount)
         {
             cells.Clear();
@@ -227,13 +224,10 @@ public class HeightField : MonoBehaviour
             geometryGetter.GetGeometry();
             if (geometryGetter.Triangles.Count > 0)
             {
-                
                 for (int i = 0; i < geometryGetter.Triangles.Count; ++i)
                 {
                     RasterizeTriangle(geometryGetter.Triangles[i].point1, geometryGetter.Triangles[i].point2, geometryGetter.Triangles[i].point3, geometryGetter.Triangles[i].areaID);
                 }
-                sw.Stop();
-                Debug.Log("\nExecution time:  " + sw.Elapsed.TotalMilliseconds + "ms");
 
                 if (filterLowHanging)
                     FilterLowHangingObstacles();
@@ -241,10 +235,10 @@ public class HeightField : MonoBehaviour
                     FilterLedgeSpans();
                 if (filterLowHeight)
                     FilterLowHeightSpans();
-               
             }
         }
-        
+        sw.Stop();
+        Debug.Log("\nExecution time:  " + sw.Elapsed.TotalMilliseconds + "ms");
     }
 
     private void GetBoundingBox(Vector3 point1, Vector3 point2, Vector3 point3, ref Vector3 triMinAABB, ref Vector3 triMaxAABB)
@@ -278,7 +272,9 @@ public class HeightField : MonoBehaviour
     private Vector3 ComputeIntersection(Vector3 point1, Vector3 point2, float offset, int axis)
     {
         Vector3 V = point2 - point1;
-        float t = (offset - point1[axis]) / V[axis];
+        float point1Axis = axis == 0 ? point1.x : point1.z;
+        float VAxis = axis == 0 ? V.x : V.z;
+        float t = (offset - point1Axis) / VAxis;
         return point1 + t * V;
     }
 
@@ -290,10 +286,10 @@ public class HeightField : MonoBehaviour
         float D1 = deltas[pointIndex];
         float D2 = deltas[pointIndex + 1 == deltas.Length ? 0 : pointIndex + 1];
 
-        if (D1 > -clipEpsilon)
+        if (D1 > -CLIP_EPSILON)
         {
             insidePoints[0] = point1;
-            if (D2 > -clipEpsilon)
+            if (D2 > -CLIP_EPSILON)
             {
                 pointsCount = 1;
             }
@@ -308,7 +304,7 @@ public class HeightField : MonoBehaviour
             }
 
         }
-        else if (D2 > -clipEpsilon)
+        else if (D2 > -CLIP_EPSILON)
         {
             Vector3 interSectionPoint = ComputeIntersection(point1, point2, offset, axis);
             insidePoints[0] = interSectionPoint;
@@ -334,7 +330,8 @@ public class HeightField : MonoBehaviour
         Span<float> verticesAxisDelta = stackalloc float[verticesCount];
         for (int i = 0; i < verticesCount; ++i)
         {
-            verticesAxisDelta[i] = offset - inputPolygon[i][axis];
+            float coord = axis == 0 ? inputPolygon[i].x : inputPolygon[i].z;
+            verticesAxisDelta[i] = offset - coord;
         }
 
         for (int i = 0; i < verticesCount; ++i)
@@ -390,7 +387,6 @@ public class HeightField : MonoBehaviour
         for (int z = z0; z <= z1; ++z)
         {
             cellPos.z = cellSize * z + minBounds.z;
-            cellPos.x = cellSize * x0 + minBounds.x;
 
             // Clip to row
             int outRowCount = 0;
@@ -404,10 +400,26 @@ public class HeightField : MonoBehaviour
             if(currentRowCount < 3)
                 continue;
 
+            // Find the row's actual X extent
+            float minX = rowBufferB[0].x;
+            float maxX = rowBufferB[0].x;
+            for(int i = 1; i < currentRowCount; ++i) 
+            {
+                if (rowBufferB[i].x < minX)
+                    minX = rowBufferB[i].x;
+                if (rowBufferB[i].x > maxX)
+                    maxX = rowBufferB[i].x;
+            }
+
+            int rowX0 = Mathf.FloorToInt((minX - minBounds.x) * inverseCellSize);
+            int rowX1 = Mathf.FloorToInt((maxX - minBounds.x) * inverseCellSize);
+            rowX0 = Math.Clamp(rowX0, x0, x1);
+            rowX1 = Math.Clamp(rowX1, x0, x1);
+
             Span<Vector3> columnInput = rowBufferB;
             Span<Vector3> columnRemainder = columnRemainderBuffer;
             int columnCount = currentRowCount;
-            for (int x = x0; x <= x1; ++x)
+            for (int x = rowX0; x <= rowX1; ++x)
             {
                 cellPos.x = cellSize * x + minBounds.x;
 
@@ -465,21 +477,24 @@ public class HeightField : MonoBehaviour
     {
         for (int i = 0; i < cellCount; ++i)
         {
-            Span previousSpan = null;
+            Span previousSpan = new Span();
             bool previousWalkable = false;
             AreaID previousAreadID = AreaID.NULL;
+            Cell currentCell = cells[i];
 
-            foreach (Span span in cells[i].spans)
+            for(int j = 0; j< currentCell.spans.Count; ++j)
             {
-                bool walkable = span.area != AreaID.NULL;
-                if (!walkable && previousWalkable && span.max - previousSpan.max <= walkableClimbSpans)
+                Span currentSpan = currentCell.spans[j];
+                bool walkable = currentSpan.area != AreaID.NULL;
+                if (!walkable && previousWalkable && currentSpan.max - previousSpan.max <= walkableClimbSpans)
                 {
-                    span.area = previousAreadID;
+                    currentSpan.area = previousAreadID;
+                    currentCell.spans[j] = currentSpan;
                 }
 
                 previousWalkable = walkable;
-                previousAreadID = span.area;
-                previousSpan = span;
+                previousAreadID = currentSpan.area;
+                previousSpan = currentSpan;
             }
         }
     }
@@ -517,8 +532,8 @@ public class HeightField : MonoBehaviour
                         }
 
                         Cell neighbourCell = cells[neighbourX + neighbourZ * cellCountX];
-                        Span neighbourSpan = neighbourCell.spans.Count > 0 ? neighbourCell.spans[0] : null;
-                        int neighbourCeiling = neighbourSpan != null ? neighbourSpan.min : int.MaxValue;
+                        Span? neighbourSpan = neighbourCell.spans.Count > 0 ? neighbourCell.spans[0] : null;
+                        int neighbourCeiling = neighbourSpan != null ? neighbourSpan.Value.min : int.MaxValue;
 
                         if (Math.Min(ceiling, neighbourCeiling) - floor >= walkableHeightSpans)
                         {
@@ -529,7 +544,7 @@ public class HeightField : MonoBehaviour
                         for (int k = 0; k < neighbourCell.spans.Count; ++k)
                         {
                             neighbourSpan = neighbourCell.spans[k];
-                            int neighbourFloor = neighbourSpan.max;
+                            int neighbourFloor = neighbourSpan.Value.max;
                             neighbourCeiling = k + 1 < neighbourCell.spans.Count ? neighbourCell.spans[k + 1].min : int.MaxValue;
 
                             if (Math.Min(ceiling, neighbourCeiling) - Math.Max(floor, neighbourFloor) < walkableHeightSpans)
@@ -555,10 +570,12 @@ public class HeightField : MonoBehaviour
                     if (lowestNeighbourFloorDifference < -walkableClimbSpans)
                     {
                         span.area = AreaID.NULL;
+                        currentCell.spans[j] = span;
                     }
                     else if (highestTraversableNeighbourFloor - lowestTraversableNeighbourFloor > walkableClimbSpans)
                     {
                         span.area = AreaID.NULL;
+                        currentCell.spans[j] = span;
                     }
                 }
             }
@@ -577,7 +594,9 @@ public class HeightField : MonoBehaviour
 
                 if (ceiling - floor < walkableHeightSpans)
                 {
-                    spans[j].area = AreaID.NULL;
+                    Span span = spans[j];
+                    span.area = AreaID.NULL;
+                    spans[j] = span;
                 }
             }
         }
