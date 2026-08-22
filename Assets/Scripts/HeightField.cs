@@ -4,11 +4,11 @@ using UnityEngine;
 
 public struct Span
 {
-    public Span(int _min, int _max, AreaID _area)
+    public Span(int min, int max, AreaID area)
     {
-        min = _min;
-        max = _max;
-        area = _area;
+        this.min = min;
+        this.max = max;
+        this.area = area;
     }
 
     public int min;
@@ -18,10 +18,10 @@ public struct Span
 
 public class Cell
 {
-    public Cell(int _X, int _Z)
+    public Cell(int X, int Z)
     {
-        X = _X;
-        Z = _Z;
+        this.X = X;
+        this.Z = Z;
     }
 
     public List<Span> spans = new List<Span>();
@@ -81,112 +81,61 @@ public class Cell
     }
 }
 
-[RequireComponent(typeof(BoxCollider))]
-public class HeightField : MonoBehaviour
+public class HeightField 
 {
-    [SerializeField] private BoxCollider boxCollider = new BoxCollider();
+    #region Properties
+    public Bounds Bounds { get { return bounds; } }
+    public float CellSize { get { return cellSize; } }
+    public float CellHeight {  get { return cellHeight; } }
+    public int CellCount { get { return cellCount; } }
+    public int CellCountY { get { return cellCountY; } }
+    public List<Cell> Cells { get { return cells; } }
 
-    [Range(0.1f, 1f)]
-    public float cellSize = 0.5f;
-    [Range(0.025f, 1f)]
-    public float cellHeight = 0.5f;
-    public float walkableClimb = 0.75f;
-    public float walkableHeight = 1f;
-
-    [Header("--- Debug ---")]
-    [SerializeField] private bool drawDebug = true;
-    [SerializeField] private bool filterLowHanging = true;
-    [SerializeField] private bool filterLedges = true;
-    [SerializeField] private bool filterLowHeight = true;
-    [SerializeField] private Color boxColor = Color.white;
-    [SerializeField] private Color heightColor = Color.white;
-    [SerializeField] private Color gridColor = Color.white;
-    [SerializeField] private Color walkableColor = Color.green;
-    [SerializeField] private Color notWalkableColor = Color.red;
-
-    public int cellCount = 10;
-    public int cellCountX = 10;
-    public int cellCountZ = 10;
-    public int cellCountY = 10;
-
-    private Vector3 minBounds = Vector3.zero;
-    private Vector3 maxBounds = Vector3.zero;
-    private List<Cell> cells = new List<Cell>();
-    private int walkableClimbSpans = 0;
-    private int walkableHeightSpans = 0;
+    private float cellSize = 0.5f;
+    private float cellHeight = 0.5f;
+    private float walkableClimb = 0.75f;
+    private float walkableHeight = 1f;
     private float inverseCellSize = 1f;
     private float inverseCellHeight = 1f;
+    private bool filterLowHanging = true;
+    private bool filterLedges = true;
+    private bool filterLowHeight = true;
+    private int cellCount = 10;
+    private int cellCountX = 10;
+    private int cellCountZ = 10;
+    private int cellCountY = 10;
+    private int walkableClimbSpans = 0;
+    private int walkableHeightSpans = 0;
+    private Vector3 minBounds = Vector3.zero;
+    private Vector3 maxBounds = Vector3.zero;
+    private Bounds bounds = new Bounds();
+    private List<Cell> cells = new List<Cell>();
 
     private static readonly float CLIP_EPSILON = 1e-5f;
     private static readonly int[] NeighbourX = { -1, 0, 1, 0 };
     private static readonly int[] NeighbourZ = { 0, 1, 0, -1 };
-
-    #region Draw functions
-    public void OnDrawGizmos()
-    {
-        if (drawDebug)
-        {
-            DrawBoundingBox();
-            DrawGrid();
-        }
-    }
-
-    private void DrawGrid()
-    {
-        if (cells.Count == 0)
-            return;
-
-        Vector3 center = Vector3.zero;
-        for (int i = 0; i < cellCount; ++i)
-        {
-            // Cell
-            if (cellSize >= 0.2f)
-            {
-                Gizmos.color = gridColor;
-                center = new Vector3(cellSize * (cells[i].X + 0.5f), 0f, cellSize * (cells[i].Z + 0.5f)) + minBounds;
-                Gizmos.DrawWireCube(center, new Vector3(cellSize, 0f, cellSize));
-            }
-
-            // Spans
-            foreach (Span span in cells[i].spans)
-            {
-                Vector3 height = new Vector3(cellSize * (cells[i].X + 0.5f), cellHeight * ((span.max + span.min) / 2f), cellSize * (cells[i].Z + 0.5f)) + minBounds;
-                Gizmos.color = span.area == AreaID.WALKABLE ? walkableColor : notWalkableColor;
-                Gizmos.DrawCube(height, new Vector3(cellSize, (span.max - span.min) * cellHeight, cellSize));
-            }
-        }
-
-        Gizmos.color = heightColor;
-        if (cellHeight >= 0.2f)
-        {
-            for (int j = 0; j < cellCountY; ++j)
-            {
-                center = new Vector3(boxCollider.transform.position.x, cellHeight * j + minBounds.y, boxCollider.transform.position.z);
-                Gizmos.DrawWireCube(center, new Vector3(boxCollider.size.x, 0f, boxCollider.size.z));
-            }
-        }
-    }
-
-    private void DrawBoundingBox()
-    {
-        Gizmos.color = boxColor;
-        Gizmos.DrawWireCube(boxCollider.transform.position, boxCollider.size);
-    }
     #endregion
 
-    #region Rasterization functions
-    public void CreateHeightField(List<Triangle> triangles)
+    #region Rasterization methods
+    public void CreateHeightField(List<Triangle> triangles, Vector3 size, Vector3 center, float cellSize, float cellHeight, float walkableClimb, float walkableHeight, bool filterLowHanging, bool filterLedges, bool filterLowHeight)
     {
-        Bounds colliderBounds = boxCollider.bounds;
-        minBounds = colliderBounds.min;
-        maxBounds = colliderBounds.max;
-        Vector3 size = boxCollider.size;
+        bounds.size = size;
+        bounds.center = center;
+        minBounds = bounds.min;
+        maxBounds = bounds.max;
+        this.cellSize = cellSize;
+        this.cellHeight = cellHeight;
+        this.walkableClimb = walkableClimb;
+        this.walkableHeight = walkableHeight;
+        this.filterLowHanging = filterLowHanging;
+        this.filterLedges = filterLedges;
+        this.filterLowHeight = filterLowHeight;
         inverseCellSize = 1f / cellSize;
         inverseCellHeight = 1f / cellHeight;
         cellCountX = Mathf.FloorToInt(size.x * inverseCellSize);
         cellCountZ = Mathf.FloorToInt(size.z * inverseCellSize);
-        cellCount = cellCountX * cellCountZ;
         cellCountY = Mathf.FloorToInt(size.y * inverseCellHeight);
+        cellCount = cellCountX * cellCountZ;
         walkableClimbSpans = Mathf.CeilToInt(walkableClimb * inverseCellHeight);
         walkableHeightSpans = Mathf.CeilToInt(walkableHeight * inverseCellHeight);
 
@@ -341,7 +290,7 @@ public class HeightField : MonoBehaviour
         int z0 = -1;
         int z1 = -1;
 
-        if (!boxCollider.bounds.Intersects(new Bounds((triMinAABB + triMaxAABB) * 0.5f, triMaxAABB - triMinAABB)))
+        if (!bounds.Intersects(new Bounds((triMinAABB + triMaxAABB) * 0.5f, triMaxAABB - triMinAABB)))
             return;
 
         MapToGrid(triMinAABB, triMaxAABB, ref x0, ref x1, ref z0, ref z1);
@@ -451,7 +400,7 @@ public class HeightField : MonoBehaviour
     }
     #endregion
 
-    #region Filter functions
+    #region Filter methods
     private void FilterLowHangingObstacles()
     {
         for (int i = 0; i < cellCount; ++i)
