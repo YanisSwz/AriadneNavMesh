@@ -67,33 +67,58 @@ public class AriadneNavMesh : MonoBehaviour
     private HeightField heightField = new HeightField();
     private int verticesCount = 0;
     private List<Triangle> triangles = new List<Triangle>();
+    private List<Transform> trackedTransforms = new List<Transform>();
+    public bool geometryChanged = false;
     #endregion
 
     #region Methods
-    private void Update()
+    private void OnEnable()
     {
         BuildNavMesh();
+        UnityEditor.EditorApplication.hierarchyChanged += OnHierarchyChanged;
     }
 
-    public void BuildNavMesh()
+    private void OnDisable()
     {
-        System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
-        sw.Start();
-
-        GetGeometry();
-        heightField.CreateHeightField(triangles, size, center + transform.position, cellSize, cellHeight, walkableClimb, walkableHeight, filterLowHanging, filterLedges, filterLowHeight);
-
-        sw.Stop();
-        Debug.Log("\nExecution time:  " + sw.Elapsed.TotalMilliseconds + "ms" +
-            "\n" + verticesCount + " vertices" +
-            "\n" + triangles.Count + " triangles"
-            );
+        UnityEditor.EditorApplication.hierarchyChanged -= OnHierarchyChanged;
     }
-    #endregion
 
-    #region Draw methods
+    private void OnHierarchyChanged()
+    {
+        geometryChanged = true;
+    }
+
+    private void OnValidate()
+    {
+        geometryChanged = true;
+    }
+
+    private void Update()
+    {
+        for(int i = 0; i < trackedTransforms.Count; ++i) 
+        {
+            if(trackedTransforms[i] == null)
+            {
+                geometryChanged = true;
+            }
+            else if (trackedTransforms[i].hasChanged) 
+            {
+                geometryChanged = true;
+                trackedTransforms[i].hasChanged = false;
+            }
+        }
+
+        if (geometryChanged)
+        {
+            BuildNavMesh();
+            geometryChanged = false;
+        }
+    }
+
     private void GetGeometry()
     {
+        trackedTransforms.Clear();
+        trackedTransforms.Add(transform);
         triangles.Clear();
         verticesCount = 0;
 
@@ -106,7 +131,9 @@ public class AriadneNavMesh : MonoBehaviour
             if (mesh == null)
                 continue;
 
-            if(!heightField.Bounds.Intersects(filter.GetComponent<Renderer>().bounds))
+            trackedTransforms.Add(filter.transform);
+
+            if (!heightField.Bounds.Intersects(filter.GetComponent<Renderer>().bounds))
                 continue;
 
             Vector3[] meshVertices = mesh.vertices;
@@ -131,10 +158,26 @@ public class AriadneNavMesh : MonoBehaviour
 
                 triangles.Add(tri);
             }
-
         }
     }
 
+    public void BuildNavMesh()
+    {
+        System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
+        sw.Start();
+
+        GetGeometry();
+        heightField.CreateHeightField(triangles, size, center + transform.position, cellSize, cellHeight, walkableClimb, walkableHeight, filterLowHanging, filterLedges, filterLowHeight);
+
+        sw.Stop();
+        Debug.Log("\nExecution time:  " + sw.Elapsed.TotalMilliseconds + "ms" +
+            "\n" + verticesCount + " vertices" +
+            "\n" + triangles.Count + " triangles"
+            );
+    }
+    #endregion
+
+    #region Draw methods
     private void OnDrawGizmos()
     {
         if (drawGeometryGetterDebug)
