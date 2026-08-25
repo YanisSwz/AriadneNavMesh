@@ -1,6 +1,15 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+public class AriadneConstants
+{
+    public const float CLIP_EPSILON = 1e-5f;
+    public const int MAX_HEIGHT = 1 << 20;
+
+    public static readonly int[] NeighbourX = { -1, 0, 1, 0 };
+    public static readonly int[] NeighbourZ = { 0, 1, 0, -1 };
+}
+
 public enum AreaID
 {
     NULL = 0,
@@ -55,20 +64,27 @@ public class AriadneNavMesh : MonoBehaviour
     [SerializeField] private Color boxColor = Color.white;
 
     [Space(8)]
-    [SerializeField] bool drawGeometryGetterDebug = false;
+    [SerializeField] private bool drawGeometryGetterDebug = false;
 
     [Space(8)]
-    [SerializeField] bool drawHeightFieldDebug = false;
+    [SerializeField] private bool drawHeightFieldDebug = false;
     [SerializeField] private Color heightColor = Color.white;
     [SerializeField] private Color gridColor = Color.white;
     [SerializeField] private Color walkableColor = Color.green;
     [SerializeField] private Color notWalkableColor = Color.red;
 
+    [Space(8)]
+    [SerializeField] private bool drawCompactHeightFieldDebug = false;
+    [SerializeField] private Color spanColor = Color.blue;
+    [Range(0.1f, 5f)]
+    [SerializeField] private float spansDisplayHeight = 1f;
+
     private HeightField heightField = new HeightField();
+    private CompactHeightField compactHeightField = new CompactHeightField();
     private int verticesCount = 0;
     private List<Triangle> triangles = new List<Triangle>();
     private List<Transform> trackedTransforms = new List<Transform>();
-    public bool geometryChanged = false;
+    private bool geometryChanged = false;
     #endregion
 
     #region Methods
@@ -95,13 +111,13 @@ public class AriadneNavMesh : MonoBehaviour
 
     private void Update()
     {
-        for(int i = 0; i < trackedTransforms.Count; ++i) 
+        for (int i = 0; i < trackedTransforms.Count; ++i)
         {
-            if(trackedTransforms[i] == null)
+            if (trackedTransforms[i] == null)
             {
                 geometryChanged = true;
             }
-            else if (trackedTransforms[i].hasChanged) 
+            else if (trackedTransforms[i].hasChanged)
             {
                 geometryChanged = true;
                 trackedTransforms[i].hasChanged = false;
@@ -168,6 +184,7 @@ public class AriadneNavMesh : MonoBehaviour
 
         GetGeometry();
         heightField.CreateHeightField(triangles, size, center + transform.position, cellSize, cellHeight, walkableClimb, walkableHeight, filterLowHanging, filterLedges, filterLowHeight);
+        compactHeightField.BuildCompactHeightField(heightField);
 
         sw.Stop();
         Debug.Log("\nExecution time:  " + sw.Elapsed.TotalMilliseconds + "ms" +
@@ -180,6 +197,8 @@ public class AriadneNavMesh : MonoBehaviour
     #region Draw methods
     private void OnDrawGizmos()
     {
+        DrawBoundingBox();
+
         if (drawGeometryGetterDebug)
         {
             DrawGeometry();
@@ -188,7 +207,10 @@ public class AriadneNavMesh : MonoBehaviour
         {
             DrawHeightField();
         }
-        DrawBoundingBox();
+        if (drawCompactHeightFieldDebug)
+        {
+            DrawCompactHeightField();
+        }
     }
 
     private void DrawGeometry()
@@ -208,17 +230,6 @@ public class AriadneNavMesh : MonoBehaviour
 
     private void DrawHeightField()
     {
-        DrawGrid();
-    }
-
-    private void DrawBoundingBox()
-    {
-        Gizmos.color = boxColor;
-        Gizmos.DrawWireCube(center + transform.position, size);
-    }
-
-    private void DrawGrid()
-    {
         List<Cell> cells = heightField.Cells;
         if (cells.Count == 0)
             return;
@@ -228,29 +239,58 @@ public class AriadneNavMesh : MonoBehaviour
         for (int i = 0; i < cells.Count; ++i)
         {
             // Cell
-            if (heightField.CellSize >= 0.2f)
+            if (cellSize >= 0.2f)
             {
                 Gizmos.color = gridColor;
-                pos = new Vector3(heightField.CellSize * (cells[i].X + 0.5f), 0f, heightField.CellSize * (cells[i].Z + 0.5f)) + minBounds;
-                Gizmos.DrawWireCube(pos, new Vector3(heightField.CellSize, 0f, heightField.CellSize));
+                pos = new Vector3(cellSize * (i % heightField.CellCountX + 0.5f), 0f, cellSize * (i / heightField.CellCountX + 0.5f)) + minBounds;
+                Gizmos.DrawWireCube(pos, new Vector3(cellSize, 0f, cellSize));
             }
 
             // Spans
             foreach (Span span in cells[i].spans)
             {
-                Vector3 height = new Vector3(heightField.CellSize * (cells[i].X + 0.5f), heightField.CellHeight * ((span.max + span.min) / 2f), heightField.CellSize * (cells[i].Z + 0.5f)) + minBounds;
+                pos = new Vector3(cellSize * (i % heightField.CellCountX + 0.5f), cellHeight * ((span.max + span.min) / 2f), cellSize * (i / heightField.CellCountX + 0.5f)) + minBounds;
                 Gizmos.color = span.area == AreaID.WALKABLE ? walkableColor : notWalkableColor;
-                Gizmos.DrawCube(height, new Vector3(heightField.CellSize, (span.max - span.min) * heightField.CellHeight, heightField.CellSize));
+                Gizmos.DrawCube(pos, new Vector3(cellSize, (span.max - span.min) * cellHeight, cellSize));
             }
         }
 
         Gizmos.color = heightColor;
-        if (heightField.CellHeight >= 0.2f)
+        if (cellHeight >= 0.2f)
         {
             for (int j = 0; j < heightField.CellCountY; ++j)
             {
-                pos = new Vector3(center.x + transform.position.x, heightField.CellHeight * j + minBounds.y, center.z + transform.position.z);
+                pos = new Vector3(center.x + transform.position.x, cellHeight * j + minBounds.y, center.z + transform.position.z);
                 Gizmos.DrawWireCube(pos, new Vector3(size.x, 0f, size.z));
+            }
+        }
+    }
+
+    private void DrawBoundingBox()
+    {
+        Gizmos.color = boxColor;
+        Gizmos.DrawWireCube(center + transform.position, size);
+    }
+
+    private void DrawCompactHeightField()
+    {
+        List<CompactCell> cells = compactHeightField.Cells;
+        List<CompactSpan> spans = compactHeightField.Spans;
+        List<AreaID> areas = compactHeightField.Areas;
+        if (cells.Count == 0 || spans.Count == 0)
+            return;
+
+        Vector3 minBounds = (center + transform.position) - size * 0.5f;
+        for (int i = 0; i < cells.Count; ++i)
+        {
+            // Spans
+            for (int j = cells[i].index; j < cells[i].index + cells[i].count; ++j)
+            {
+                CompactSpan span = spans[j];
+                Vector3 position = new Vector3(cellSize * (i % heightField.CellCountX + 0.5f), span.y * cellHeight + spansDisplayHeight * 0.5f, cellSize * (i / heightField.CellCountX + 0.5f)) + minBounds;
+
+                Gizmos.color = spanColor;
+                Gizmos.DrawCube(position, new Vector3(cellSize, spansDisplayHeight, cellSize));
             }
         }
     }

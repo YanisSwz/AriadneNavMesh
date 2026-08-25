@@ -18,15 +18,7 @@ public struct Span
 
 public class Cell
 {
-    public Cell(int X, int Z)
-    {
-        this.X = X;
-        this.Z = Z;
-    }
-
     public List<Span> spans = new List<Span>();
-    public int X = -1;
-    public int Z = -1;
 
     public void Reset()
     {
@@ -88,8 +80,12 @@ public class HeightField
     public float CellSize { get { return cellSize; } }
     public float CellHeight {  get { return cellHeight; } }
     public int CellCount { get { return cellCount; } }
+    public int CellCountX { get { return cellCountX; } }
     public int CellCountY { get { return cellCountY; } }
+    public int CellCountZ { get { return cellCountZ; } }
     public List<Cell> Cells { get { return cells; } }
+    public int WalkableClimb { get { return walkableClimbSpans; } }
+    public int WalkableHeight { get { return walkableHeightSpans; } }
 
     private float cellSize = 0.5f;
     private float cellHeight = 0.5f;
@@ -110,10 +106,6 @@ public class HeightField
     private Vector3 maxBounds = Vector3.zero;
     private Bounds bounds = new Bounds();
     private List<Cell> cells = new List<Cell>();
-
-    private static readonly float CLIP_EPSILON = 1e-5f;
-    private static readonly int[] NeighbourX = { -1, 0, 1, 0 };
-    private static readonly int[] NeighbourZ = { 0, 1, 0, -1 };
     #endregion
 
     #region Rasterization methods
@@ -145,7 +137,7 @@ public class HeightField
             cells.Capacity = cellCount;
             for (int i = 0; i < cellCount; ++i)
             {
-                cells.Add(new Cell(i % cellCountX, i / cellCountX));
+                cells.Add(new Cell());
             }
         }
         else
@@ -214,10 +206,10 @@ public class HeightField
         float D1 = deltas[pointIndex];
         float D2 = deltas[pointIndex + 1 == deltas.Length ? 0 : pointIndex + 1];
 
-        if (D1 > -CLIP_EPSILON)
+        if (D1 > -AriadneConstants.CLIP_EPSILON)
         {
             insidePoints[0] = point1;
-            if (D2 > -CLIP_EPSILON)
+            if (D2 > -AriadneConstants.CLIP_EPSILON)
             {
                 pointsCount = 1;
             }
@@ -232,7 +224,7 @@ public class HeightField
             }
 
         }
-        else if (D2 > -CLIP_EPSILON)
+        else if (D2 > -AriadneConstants.CLIP_EPSILON)
         {
             Vector3 interSectionPoint = ComputeIntersection(point1, point2, offset, axis);
             insidePoints[0] = interSectionPoint;
@@ -441,17 +433,17 @@ public class HeightField
                         continue;
 
                     int floor = span.max;
-                    int ceiling = j + 1 < currentCell.spans.Count ? currentCell.spans[j + 1].min : int.MaxValue;
+                    int ceiling = j + 1 < currentCell.spans.Count ? currentCell.spans[j + 1].min : AriadneConstants.MAX_HEIGHT;
 
-                    int lowestNeighbourFloorDifference = int.MaxValue;
+                    int lowestNeighbourFloorDifference = AriadneConstants.MAX_HEIGHT;
 
                     int lowestTraversableNeighbourFloor = span.max;
                     int highestTraversableNeighbourFloor = span.max;
 
                     for (int direction = 0; direction < 4; ++direction)
                     {
-                        int neighbourX = x + NeighbourX[direction];
-                        int neighbourZ = z + NeighbourZ[direction];
+                        int neighbourX = x + AriadneConstants.NeighbourX[direction];
+                        int neighbourZ = z + AriadneConstants.NeighbourZ[direction];
 
                         if (neighbourX < 0 || neighbourZ < 0 || neighbourX >= cellCountX || neighbourZ >= cellCountZ)
                         {
@@ -461,7 +453,7 @@ public class HeightField
 
                         Cell neighbourCell = cells[neighbourX + neighbourZ * cellCountX];
                         Span? neighbourSpan = neighbourCell.spans.Count > 0 ? neighbourCell.spans[0] : null;
-                        int neighbourCeiling = neighbourSpan != null ? neighbourSpan.Value.min : int.MaxValue;
+                        int neighbourCeiling = neighbourSpan != null ? neighbourSpan.Value.min : AriadneConstants.MAX_HEIGHT;
 
                         if (Math.Min(ceiling, neighbourCeiling) - floor >= walkableHeightSpans)
                         {
@@ -473,7 +465,7 @@ public class HeightField
                         {
                             neighbourSpan = neighbourCell.spans[k];
                             int neighbourFloor = neighbourSpan.Value.max;
-                            neighbourCeiling = k + 1 < neighbourCell.spans.Count ? neighbourCell.spans[k + 1].min : int.MaxValue;
+                            neighbourCeiling = k + 1 < neighbourCell.spans.Count ? neighbourCell.spans[k + 1].min : AriadneConstants.MAX_HEIGHT;
 
                             if (Math.Min(ceiling, neighbourCeiling) - Math.Max(floor, neighbourFloor) < walkableHeightSpans)
                             {
@@ -518,7 +510,7 @@ public class HeightField
             for (int j = 0; j < spans.Count; ++j)
             {
                 int floor = spans[j].max;
-                int ceiling = j + 1 < spans.Count ? spans[j + 1].min : int.MaxValue;
+                int ceiling = j + 1 < spans.Count ? spans[j + 1].min : AriadneConstants.MAX_HEIGHT;
 
                 if (ceiling - floor < walkableHeightSpans)
                 {

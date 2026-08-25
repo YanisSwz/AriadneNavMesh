@@ -191,12 +191,14 @@ MonoBehaviour:
   filterLowHeight: 1
   boxColor: {r: 1, g: 1, b: 1, a: 1}
   drawGeometryGetterDebug: 0
-  drawHeightFieldDebug: 1
+  drawHeightFieldDebug: 0
   heightColor: {r: 1, g: 1, b: 1, a: 1}
   gridColor: {r: 1, g: 1, b: 1, a: 1}
   walkableColor: {r: 0, g: 1, b: 0, a: 1}
   notWalkableColor: {r: 1, g: 0, b: 0, a: 1}
-  geometryChanged: 0
+  drawCompactHeightFieldDebug: 1
+  spanColor: {r: 0, g: 1, b: 1, a: 1}
+  spansDisplayHeight: 0.2
 --- !u!4 &205771268
 Transform:
   m_ObjectHideFlags: 0
@@ -206,7 +208,7 @@ Transform:
   m_GameObject: {fileID: 205771263}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -15.13, y: 9.21, z: 3.62}
+  m_LocalPosition: {x: -14.83, y: 8.96, z: 3.82}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -240,7 +242,7 @@ Transform:
   m_GameObject: {fileID: 328816402}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 9.67, y: 9.13, z: 10.59}
+  m_LocalPosition: {x: 9.7, y: 9.13, z: 9.94}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
