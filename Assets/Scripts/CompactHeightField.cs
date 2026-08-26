@@ -168,7 +168,7 @@ public class CompactHeightField
         }
     }
 
-    public int GetHeightfieldSpanCount(HeightField heightField)
+    private int GetHeightfieldSpanCount(HeightField heightField)
     {
         int spanCount = 0;
         for (int i = 0; i < heightField.CellCount; ++i)
@@ -181,5 +181,185 @@ public class CompactHeightField
         }
 
         return spanCount;
+    }
+
+    public void ErodeWalkableArea(int radius)
+    {
+        int[] distanceToBoundary = new int[spanCount];
+        Array.Fill(distanceToBoundary, 1 << 20);
+
+        // Mark the boundary cells
+        for (int z = 0; z < cellCountZ; ++z)
+        {
+            for (int x = 0; x < cellCountX; ++x)
+            {
+                CompactCell cell = cells[x + z * cellCountX];
+                int maxSpanIndex = cell.index + cell.count;
+                for (int i = cell.index; i < maxSpanIndex; ++i)
+                {
+                    // Check for spans that have been marked unwalkable by manually-authored areas
+                    if (areas[i] == AreaID.NULL)
+                    {
+                        distanceToBoundary[i] = 0;
+                        continue;
+                    }
+
+                    CompactSpan span = spans[i];
+
+                    int neighbourCount = 0;
+                    for (int dir = 0; dir < 4; ++dir)
+                    {
+                        if (span.neighbours[dir] == -1)
+                        {
+                            break;
+                        }
+
+                        if (areas[span.neighbours[dir]] == AreaID.NULL)
+                        {
+                            break;
+                        }
+
+                        ++neighbourCount;
+                    }
+
+                    // If not surrounded by neighbours, this is a boundary cell
+                    if (neighbourCount != 4)
+                    {
+                        distanceToBoundary[i] = 0;
+                    }
+                }
+            }
+        }
+
+        int newDistance;
+
+        // South-West neighbours pass
+        for (int z = 0; z < cellCountZ; ++z)
+        {
+            for (int x = 0; x < cellCountX; ++x)
+            {
+                CompactCell cell = cells[x + z * cellCountX];
+                int maxSpanIndex = cell.index + cell.count;
+                for (int i = cell.index; i < maxSpanIndex; ++i)
+                {
+                    CompactSpan span = spans[i];
+
+                    if (span.neighbours[0] != -1)
+                    {
+                        // (-1, 0)
+                        int aIndex = span.neighbours[0];
+                        CompactSpan neighbourSpan = spans[aIndex];
+                        newDistance = Math.Min(distanceToBoundary[aIndex] + 2, 1 << 20);
+                        if (newDistance < distanceToBoundary[i])
+                        {
+                            distanceToBoundary[i] = newDistance;
+                        }
+
+                        // (-1, -1)
+                        if (neighbourSpan.neighbours[3] != -1)
+                        {
+                            int bIndex = neighbourSpan.neighbours[3];
+                            newDistance = Math.Min(distanceToBoundary[bIndex] + 3, 1 << 20);
+                            if (newDistance < distanceToBoundary[i])
+                            {
+                                distanceToBoundary[i] = newDistance;
+                            }
+                        }
+                    }
+
+                    if (span.neighbours[3] != -1)
+                    {
+                        // (0, -1)
+                        int aIndex = span.neighbours[3];
+                        CompactSpan neighbourSpan = spans[aIndex];
+                        newDistance = Math.Min(distanceToBoundary[aIndex] + 2, 1 << 20);
+                        if (newDistance < distanceToBoundary[i])
+                        {
+                            distanceToBoundary[i] = newDistance;
+                        }
+
+                        // (1, -1)
+                        if (neighbourSpan.neighbours[2] != -1)
+                        {
+                            int bIndex = neighbourSpan.neighbours[2];
+                            newDistance = Math.Min(distanceToBoundary[bIndex] + 3, 1 << 20);
+                            if (newDistance < distanceToBoundary[i])
+                            {
+                                distanceToBoundary[i] = newDistance;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // North-East neighbours pass
+        for (int z = cellCountZ - 1; z >= 0; --z)
+        {
+            for (int x = cellCountX - 1; x >= 0 ; --x)
+            {
+                CompactCell cell = cells[x + z * cellCountX];
+                int maxSpanIndex = cell.index + cell.count;
+                for (int i = cell.index; i < maxSpanIndex; ++i)
+                {
+                    CompactSpan span = spans[i];
+
+                    if (span.neighbours[2] != -1)
+                    {
+                        // (1, 0)
+                        int aIndex = span.neighbours[2];
+                        CompactSpan neighbourSpan = spans[aIndex];
+                        newDistance = Math.Min(distanceToBoundary[aIndex] + 2, 1 << 20);
+                        if (newDistance < distanceToBoundary[i])
+                        {
+                            distanceToBoundary[i] = newDistance;
+                        }
+
+                        // (1, 1)
+                        if (neighbourSpan.neighbours[1] != -1)
+                        {
+                            int bIndex = neighbourSpan.neighbours[1];
+                            newDistance = Math.Min(distanceToBoundary[bIndex] + 3, 1 << 20);
+                            if (newDistance < distanceToBoundary[i])
+                            {
+                                distanceToBoundary[i] = newDistance;
+                            }
+                        }
+                    }
+
+                    if (span.neighbours[1] != -1)
+                    {
+                        // (0, 1)
+                        int aIndex = span.neighbours[1];
+                        CompactSpan neighbourSpan = spans[aIndex];
+                        newDistance = Math.Min(distanceToBoundary[aIndex] + 2, 1 << 20);
+                        if (newDistance < distanceToBoundary[i])
+                        {
+                            distanceToBoundary[i] = newDistance;
+                        }
+
+                        // (-1, 1)
+                        if (neighbourSpan.neighbours[0] != -1)
+                        {
+                            int bIndex = neighbourSpan.neighbours[0];
+                            newDistance = Math.Min(distanceToBoundary[bIndex] + 3, 1 << 20);
+                            if (newDistance < distanceToBoundary[i])
+                            {
+                                distanceToBoundary[i] = newDistance;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        int minBoundaryDistance = radius * 2;
+        for(int i = 0; i < spanCount; ++i) 
+        {
+            if (distanceToBoundary[i] < minBoundaryDistance)
+            {
+                areas[i] = AreaID.NULL;
+            }
+        }
     }
 }

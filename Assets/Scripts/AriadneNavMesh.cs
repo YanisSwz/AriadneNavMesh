@@ -59,6 +59,10 @@ public class AriadneNavMesh : MonoBehaviour
     [SerializeField] private bool filterLedges = true;
     [SerializeField] private bool filterLowHeight = true;
 
+    [Header("--- Erosion ---")]
+    [Range(0f, 5f)]
+    [SerializeField] private float agentRadius = 0.5f;
+
     [Header("--- Debug ---")]
     [Space(8)]
     [SerializeField] private Color boxColor = Color.white;
@@ -75,7 +79,6 @@ public class AriadneNavMesh : MonoBehaviour
 
     [Space(8)]
     [SerializeField] private bool drawCompactHeightFieldDebug = false;
-    [SerializeField] private Color spanColor = Color.blue;
     [Range(0.1f, 5f)]
     [SerializeField] private float spansDisplayHeight = 1f;
 
@@ -185,6 +188,7 @@ public class AriadneNavMesh : MonoBehaviour
         GetGeometry();
         heightField.CreateHeightField(triangles, size, center + transform.position, cellSize, cellHeight, walkableClimb, walkableHeight, filterLowHanging, filterLedges, filterLowHeight);
         compactHeightField.BuildCompactHeightField(heightField);
+        compactHeightField.ErodeWalkableArea(Mathf.CeilToInt(agentRadius / cellSize));
 
         sw.Stop();
         Debug.Log("\nExecution time:  " + sw.Elapsed.TotalMilliseconds + "ms" +
@@ -289,7 +293,7 @@ public class AriadneNavMesh : MonoBehaviour
                 CompactSpan span = spans[j];
                 Vector3 position = new Vector3(cellSize * (i % heightField.CellCountX + 0.5f), span.y * cellHeight + spansDisplayHeight * 0.5f, cellSize * (i / heightField.CellCountX + 0.5f)) + minBounds;
 
-                Gizmos.color = spanColor;
+                Gizmos.color = areas[j] == AreaID.WALKABLE ? walkableColor : notWalkableColor;
                 Gizmos.DrawCube(position, new Vector3(cellSize, spansDisplayHeight, cellSize));
             }
         }
