@@ -63,6 +63,10 @@ public class AriadneNavMesh : MonoBehaviour
     [Range(0f, 5f)]
     [SerializeField] private float agentRadius = 0.5f;
 
+    [Header("--- Regions ---")]
+    [Range(0f, 5f)]
+    [SerializeField] private float minRegionArea = 0.5f;
+
     [Header("--- Debug ---")]
     [Space(8)]
     [SerializeField] private Color boxColor = Color.white;
@@ -79,6 +83,8 @@ public class AriadneNavMesh : MonoBehaviour
 
     [Space(8)]
     [SerializeField] private bool drawCompactHeightFieldDebug = false;
+    [SerializeField] private bool drawDistanceFieldDebug = false;
+    [SerializeField] private bool drawRegionsDebug = false;
     [Range(0.1f, 5f)]
     [SerializeField] private float spansDisplayHeight = 1f;
 
@@ -88,6 +94,7 @@ public class AriadneNavMesh : MonoBehaviour
     private List<Triangle> triangles = new List<Triangle>();
     private List<Transform> trackedTransforms = new List<Transform>();
     private bool geometryChanged = false;
+    private List<Color> colors = new List<Color>();
     #endregion
 
     #region Methods
@@ -189,12 +196,20 @@ public class AriadneNavMesh : MonoBehaviour
         heightField.CreateHeightField(triangles, size, center + transform.position, cellSize, cellHeight, walkableClimb, walkableHeight, filterLowHanging, filterLedges, filterLowHeight);
         compactHeightField.BuildCompactHeightField(heightField);
         compactHeightField.ErodeWalkableArea(Mathf.CeilToInt(agentRadius / cellSize));
+        compactHeightField.BuildDistanceField();
+        int minRegionAreaVoxel = Mathf.CeilToInt(minRegionArea / cellSize);
+        compactHeightField.BuildRegions(minRegionAreaVoxel * minRegionAreaVoxel);
 
         sw.Stop();
         Debug.Log("\nExecution time:  " + sw.Elapsed.TotalMilliseconds + "ms" +
             "\n" + verticesCount + " vertices" +
             "\n" + triangles.Count + " triangles"
             );
+
+        for (int i = colors.Count; i < compactHeightField.RegionCount; ++i)
+        {
+            colors.Add(new Color(Random.Range(0f, 1f), Random.Range(0f, 1f), Random.Range(0f, 1f)));
+        }
     }
     #endregion
 
@@ -281,6 +296,9 @@ public class AriadneNavMesh : MonoBehaviour
         List<CompactCell> cells = compactHeightField.Cells;
         List<CompactSpan> spans = compactHeightField.Spans;
         List<AreaID> areas = compactHeightField.Areas;
+        List<int> distances = compactHeightField.Distances;
+        int maxDistance = compactHeightField.MaxDistance;
+
         if (cells.Count == 0 || spans.Count == 0)
             return;
 
@@ -293,7 +311,22 @@ public class AriadneNavMesh : MonoBehaviour
                 CompactSpan span = spans[j];
                 Vector3 position = new Vector3(cellSize * (i % heightField.CellCountX + 0.5f), span.y * cellHeight + spansDisplayHeight * 0.5f, cellSize * (i / heightField.CellCountX + 0.5f)) + minBounds;
 
-                Gizmos.color = areas[j] == AreaID.WALKABLE ? walkableColor : notWalkableColor;
+                if (drawRegionsDebug)
+                {
+                    if (spans[j].regionID == 0)
+                        continue;
+
+                    Gizmos.color = colors[spans[j].regionID];
+                }
+                else if (drawDistanceFieldDebug)
+                {
+                    float color = (float)(distances[j]) / (float)(maxDistance);
+                    Gizmos.color = new Color(color, color, color);
+                }
+                else
+                {
+                    Gizmos.color = areas[j] == AreaID.WALKABLE ? walkableColor : notWalkableColor;
+                }
                 Gizmos.DrawCube(position, new Vector3(cellSize, spansDisplayHeight, cellSize));
             }
         }

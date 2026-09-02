@@ -190,6 +190,7 @@ MonoBehaviour:
   filterLedges: 1
   filterLowHeight: 1
   agentRadius: 0.5
+  minRegionArea: 2.4
   boxColor: {r: 1, g: 1, b: 1, a: 1}
   drawGeometryGetterDebug: 0
   drawHeightFieldDebug: 0
@@ -198,7 +199,8 @@ MonoBehaviour:
   walkableColor: {r: 0, g: 1, b: 0, a: 1}
   notWalkableColor: {r: 1, g: 0, b: 0, a: 1}
   drawCompactHeightFieldDebug: 1
-  spanColor: {r: 0, g: 1, b: 1, a: 1}
+  drawDistanceFieldDebug: 0
+  drawRegionsDebug: 1
   spansDisplayHeight: 0.2
 --- !u!4 &205771268
 Transform:
@@ -209,7 +211,7 @@ Transform:
   m_GameObject: {fileID: 205771263}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -14.83, y: 8.96, z: 3.78}
+  m_LocalPosition: {x: -14.83, y: 8.96, z: 3.85}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -243,7 +245,7 @@ Transform:
   m_GameObject: {fileID: 328816402}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 9.7, y: 9.13, z: 9.54}
+  m_LocalPosition: {x: 9.12, y: 9.13, z: 10.257}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1189,7 +1191,7 @@ Transform:
   m_GameObject: {fileID: 1978381350}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 8.63, y: 8.359465, z: 13.95}
+  m_LocalPosition: {x: 7.43, y: 8.359465, z: 13}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
